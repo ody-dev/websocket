@@ -1,5 +1,5 @@
 {
-  "name": "ody/websocket-server",
+  "name": "ody/websocket",
   "description": "Coroutine websocket server",
   "minimum-stability": "stable",
   "license": "MIT",
