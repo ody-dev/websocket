@@ -1,0 +1,50 @@
+{
+  "name": "ody/websocket-server",
+  "description": "Coroutine websocket server",
+  "minimum-stability": "stable",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "ilyas",
+      "email": "email@example.com"
+    }
+  ],
+  "require": {
+    "php": ">=8.3",
+    "ody/swoole": "@dev"
+  },
+  "require-dev": {
+    "swoole/ide-helper": "^6.0",
+    "vimeo/psalm": "^5.24",
+    "phpstan/phpstan": "^1.11",
+    "phpunit/phpunit": "^9.6"
+  },
+  "autoload": {
+    "psr-4": {
+      "Ody\\Websocket\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Ody\\Websocket\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": [
+      "@phpunit",
+      "@phpcs",
+      "@phpstan",
+      "@psalm"
+    ],
+    "phpunit": "phpunit",
+    "phpcs": "phpcs",
+    "phpstan": "phpstan --memory-limit=-1",
+    "psalm": "psalm --no-cache"
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../ody-swoole"
+    }
+  ]
+}
