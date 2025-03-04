@@ -1,5 +1,5 @@
 {
-  "name": "ody/websocket-server",
+  "name": "ody/websocket",
   "description": "Coroutine websocket server",
   "minimum-stability": "stable",
   "license": "MIT",
@@ -11,7 +11,7 @@
   ],
   "require": {
     "php": ">=8.3",
-    "ody/swoole": "@dev"
+    "ody/swoole": "0.0.1"
   },
   "require-dev": {
     "swoole/ide-helper": "^6.0",
@@ -40,11 +40,5 @@
     "phpcs": "phpcs",
     "phpstan": "phpstan --memory-limit=-1",
     "psalm": "psalm --no-cache"
-  },
-  "repositories": [
-    {
-      "type": "path",
-      "url": "../ody-swoole"
-    }
-  ]
+  }
 }
