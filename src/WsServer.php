@@ -36,7 +36,7 @@ class WsServer
             $this->getSslConfig($config['ssl'], $config['mode']),
             $config["sock_type"]
         );
-      
+
         return $this;
     }
 
@@ -60,7 +60,7 @@ class WsServer
         // Handle incoming requests
         // TODO: Implement routes
         echo "Received request from broadcasting channel.\n";
-        if ($request->header["x-api-key"] !== config('websockets.secret_key')) {
+        if ($request->header["x-api-key"] !== config('websocket.secret_key')) {
             $response->status(401);
             $response->end();
         }
