@@ -36,4 +36,9 @@ class WsEvent
      * Websocket onClose event.
      */
     public const ON_CLOSE = 'close';
+
+    /**
+     * Websocket onWorkerStart event.
+     */
+    public const ON_WORKER_START = 'workerStart';
 }
