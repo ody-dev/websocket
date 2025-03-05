@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace Ody\Websocket\Commands;
 
-use Ody\Core\Console\Style;
-use Ody\Swoole\ServerState;
+use Ody\Core\Foundation\Console\Style;
+use Ody\Websocket\WebsocketServerState;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,7 +18,7 @@ class StopCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $serverState = ServerState::getInstance();
+        $serverState = WebsocketServerState::getInstance();
         $io = new Style($input, $output);
 
         if (!$serverState->websocketServerIsRunning()){
@@ -27,13 +27,13 @@ class StopCommand extends Command
         }
 
         $serverState->killProcesses([
-            $serverState->getWebsocketMasterProcessId(),
-            $serverState->getWebsocketManagerProcessId(),
+            $serverState->getMasterProcessId(),
+            $serverState->getManagerProcessId(),
             $serverState->getWatcherProcessId(),
-            ...$serverState->getWebsocketWorkerProcessIds()
+            ...$serverState->getWorkerProcessIds()
         ]);
 
-        $serverState->clearWebsocketProcessIds();
+        $serverState->clearProcessIds();
 
 
         sleep(1);

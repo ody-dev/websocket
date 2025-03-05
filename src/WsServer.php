@@ -3,17 +3,15 @@ declare(strict_types=1);
 namespace Ody\Websocket;
 
 use Ody\Swoole\RateLimiter;
-use Ody\Swoole\ServerState;
-use Swoole\Http\Response;
-use Swoole\WebSocket\Frame;
-use Swoole\Websocket\Server as WsServer;
 use Swoole\Http\Request;
+use Swoole\Http\Response;
 use Swoole\Table;
+use Swoole\WebSocket\Frame;
+use Swoole\Websocket\Server;
 
-class Server
+class WsServer
 {
-    private static WsServer $server;
-
+    private static Server $server;
     public static Table $fds;
     private static RateLimiter $rateLimiter;
 
@@ -22,45 +20,32 @@ class Server
         return new self();
     }
 
-    public function start(bool $daemonize = false): void
+    public function start(): void
     {
-        if ($daemonize === true){
-            static::$server->set([
-                'daemonize' => 1
-            ]);
-        }
-
+        static::onStart(static::$server);
         static::$server->start();
     }
 
-    public function createServer(string $host = null, int $port = null): static
+    public function createServer($config): static
     {
         $this->createFdsTable();
 //        $this->createRatelimiter();
-        static::$server = new WsServer(
-            $host ?: config('websockets.host'),
-            $port ?: (int) config('websockets.port'),
-            !is_null(config('server.ssl.ssl_cert_file')) && !is_null(config('server.ssl.ssl_key_file')) ? config('server.mode') | SWOOLE_SSL : config('server.mode'),
-            config('server.sock_type')
+        static::$server = new Server(
+            $config['host'],
+            (int) $config['port'],
+            $this->getSslConfig($config['ssl'], $config['mode']),
+            $config["sock_type"]
         );
-
-        static::$server->set([
-            ...config('websockets.additional')
-        ]);
-
-        static::$server->set([
-            'open_websocket_ping_frame' => true,
-            'open_websocket_pong_frame' => true,
-        ]);
-
-        $callbacks = config('websockets.callbacks');
-        foreach ($callbacks as $event => $callback) {
-            static::$server->on($event, [$callback[0], $callback[1]]);
-        }
-
-        static::$server->on('workerStart', [$this, 'onWorkerStart']);
       
         return $this;
+    }
+
+    public static function onStart (Server $server): void
+    {
+        $protocol = ($server->ssl) ? "https" : "http";
+        echo "   \033[1mSUCCESS\033[0m  Websocket started successfully\n";
+        echo "   \033[1mINFO\033[0m  listen on " . $protocol . "://" . $server->host . ':' . $server->port . PHP_EOL;
+        echo "   \033[1mINFO\033[0m  press Ctrl+C to stop the server\n";
     }
 
     /*
@@ -114,7 +99,7 @@ class Server
 //            return false;
 //        }
 
-        if ($request->header["sec-websocket-protocol"] !== config('websockets.secret_key')) {
+        if ($request->header["sec-websocket-protocol"] !== config('websocket.secret_key')) {
             echo "Not authenticated\n";
             $response->status(401);
             $response->end();
@@ -172,19 +157,19 @@ class Server
         echo "Connection <{$fd}> open by {$clientName}. Total connections: " . static::$fds->count() . "\n";
     }
 
-    public static function onClose(WsServer $server, $fd): void
+    public static function onClose(Server $server, $fd): void
     {
         static::$fds->del((string) $fd);
         echo "Connection close: {$fd}, total connections: " . static::$fds->count() . PHP_EOL;
     }
 
-    public static function onDisconnect(WsServer $server, int $fd): void
+    public static function onDisconnect(Server $server, int $fd): void
     {
         static::$fds->del((string) $fd);
         echo "Disconnect: {$fd}, total connections: " . static::$fds->count() . "\n\n";
     }
 
-    public static function onMessage (WsServer $server, Frame $frame): void
+    public static function onMessage (Server $server, Frame $frame): void
     {
         // Check for a ping event using the OpCode
         if($frame->opcode === WEBSOCKET_OPCODE_PING)
@@ -214,7 +199,7 @@ class Server
         static::$fds = $fds;
     }
 
-    private function validateHandshake($request, $response): void
+    private static function validateHandshake($request, $response): void
     {
         $key = $request->header['sec-websocket-key'] ?? '';
 
@@ -249,28 +234,66 @@ class Server
         echo "Handshake done\n";
     }
 
+    public static function onWorkerStart(Server $server, int $workerId): void
+    {
+        if ($workerId == config('websocket.additional.worker_num') - 1){
+            $workerIds = [];
+            for ($i = 0; $i < config('websocket.additional.worker_num'); $i++){
+                $workerIds[$i] = $server->getWorkerPid($i);
+            }
+
+            $serveState = WebsocketServerState::getInstance();
+            $serveState->setMasterProcessId($server->getMasterPid());
+            $serveState->setManagerProcessId($server->getManagerPid());
+            $serveState->setWorkerProcessIds($workerIds);
+        }
+    }
+
     private function createRatelimiter()
     {
         static::$rateLimiter = new RateLimiter();
     }
 
-    public function onWorkerStart(WsServer $server, int $workerId): void
+    /**
+     * @param array $config
+     * @param $serverMode
+     * @return int
+     */
+    private function getSslConfig(array $config, $serverMode): int
     {
-        if ($workerId == config('websockets.additional.worker_num') - 1){
-            $this->saveWorkerIds($server);
+        if (
+            !is_null($config["ssl_cert_file"]) &&
+            !is_null($config["ssl_key_file"])
+        ) {
+            return !is_null($serverMode) ? $serverMode : SWOOLE_SSL;
         }
+
+        return $serverMode;
     }
 
-    protected function saveWorkerIds(WsServer $server): void
+    public function registerCallbacks(array $callbacks): static
     {
-        $workerIds = [];
-        for ($i = 0; $i < config('websockets.additional.worker_num'); $i++){
-            $workerIds[$i] = $server->getWorkerPid($i);
+        foreach ($callbacks as $event => $callback) {
+            static::$server->on($event, [...$callback]);
         }
 
-        $serveState = ServerState::getInstance();
-        $serveState->setWebsocketMasterProcessId($server->getMasterPid());
-        $serveState->setWebsocketManagerProcessId($server->getManagerPid());
-        $serveState->setWebsocketWorkerProcessIds($workerIds);
+        return $this;
+    }
+
+    public function setServerConfig(array $config, int $daemonize = 0): static
+    {
+        static::$server->set([
+            ...$config,
+            'daemonize' => (int) $daemonize,
+            'enable_coroutine' => true // must be set on false for Runtime::enableCoroutine
+        ]);
+
+        static::$server->set([
+            ...config('websocket.additional'),
+            'open_websocket_ping_frame' => true,
+            'open_websocket_pong_frame' => true,
+        ]);
+
+        return $this;
     }
 }
