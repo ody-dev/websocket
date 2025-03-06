@@ -6,12 +6,13 @@
   "authors": [
     {
       "name": "ilyas",
-      "email": "email@example.com"
+      "email": "ilyas@ody.dev"
     }
   ],
   "require": {
     "php": ">=8.3",
-    "ody/swoole": "^0.0.2"
+    "ody/swoole": "dev-master",
+    "ody/server": "dev-master"
   },
   "require-dev": {
     "swoole/ide-helper": "^6.0",
