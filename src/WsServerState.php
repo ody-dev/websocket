@@ -2,12 +2,12 @@
 
 namespace Ody\Websocket;
 
-use Ody\Swoole\ServerState;
+use Ody\Server\State\ServerState;
 
-class WebsocketServerState extends ServerState
+class WsServerState extends ServerState
 {
     /**
-     * @var WebsocketServerState|null
+     * @var WsServerState|null
      */
     protected static ?self $instance = null;
 
