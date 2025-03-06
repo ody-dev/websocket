@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Ody\Websocket\Commands;
 
 use Ody\Core\Foundation\Console\Style;
-use Ody\Websocket\WebsocketServerState;
+use Ody\Websocket\WsServerState;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,7 +18,7 @@ class StopCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $serverState = WebsocketServerState::getInstance();
+        $serverState = WsServerState::getInstance();
         $io = new Style($input, $output);
 
         if (!$serverState->websocketServerIsRunning()){

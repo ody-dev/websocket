@@ -9,35 +9,18 @@ use Swoole\Table;
 use Swoole\WebSocket\Frame;
 use Swoole\Websocket\Server;
 
-class WsServer
+class WsServerCallbacks
 {
     private static Server $server;
     public static Table $fds;
     private static RateLimiter $rateLimiter;
 
-    public static function init(): self
+    public static function init($server): void
     {
-        return new self();
-    }
-
-    public function start(): void
-    {
+        static::$server = $server;
+        static::createFdsTable();
         static::onStart(static::$server);
-        static::$server->start();
-    }
-
-    public function createServer($config): static
-    {
-        $this->createFdsTable();
-//        $this->createRatelimiter();
-        static::$server = new Server(
-            $config['host'],
-            (int) $config['port'],
-            $this->getSslConfig($config['ssl'], $config['mode']),
-            $config["sock_type"]
-        );
-
-        return $this;
+//        return new self();
     }
 
     public static function onStart (Server $server): void
@@ -189,7 +172,7 @@ class WsServer
     }
 
 
-    private function createFdsTable(): void
+    private static function createFdsTable(): void
     {
         $fds = new Table(1024);
         $fds->column('fd', Table::TYPE_INT, 4);
@@ -242,7 +225,7 @@ class WsServer
                 $workerIds[$i] = $server->getWorkerPid($i);
             }
 
-            $serveState = WebsocketServerState::getInstance();
+            $serveState = WsServerState::getInstance();
             $serveState->setMasterProcessId($server->getMasterPid());
             $serveState->setManagerProcessId($server->getManagerPid());
             $serveState->setWorkerProcessIds($workerIds);
@@ -269,31 +252,5 @@ class WsServer
         }
 
         return $serverMode;
-    }
-
-    public function registerCallbacks(array $callbacks): static
-    {
-        foreach ($callbacks as $event => $callback) {
-            static::$server->on($event, [...$callback]);
-        }
-
-        return $this;
-    }
-
-    public function setServerConfig(array $config, int $daemonize = 0): static
-    {
-        static::$server->set([
-            ...$config,
-            'daemonize' => (int) $daemonize,
-            'enable_coroutine' => true // must be set on false for Runtime::enableCoroutine
-        ]);
-
-        static::$server->set([
-            ...config('websocket.additional'),
-            'open_websocket_ping_frame' => true,
-            'open_websocket_pong_frame' => true,
-        ]);
-
-        return $this;
     }
 }

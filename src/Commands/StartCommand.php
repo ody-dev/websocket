@@ -4,8 +4,10 @@ namespace Ody\Websocket\Commands;
 
 use Ody\Core\Foundation\Console\Style;
 use Ody\Core\Server\Dependencies;
+use Ody\Server\ServerType;
 use Ody\Swoole\HotReload\Watcher;
-use Ody\Websocket\WebsocketServerState;
+use Ody\Websocket\WsServerCallbacks;
+use Ody\Websocket\WsServerState;
 use Swoole\Process;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -15,12 +17,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ChoiceQuestion;
 
 #[AsCommand(
-    name: 'websockets:start',
+    name: 'websocket:start',
     description: 'start http server'
 )]
 class StartCommand extends Command
 {
-    private $serverState;
+    private WsServerState $serverState;
+
     private Style $io;
 
     protected function configure(): void
@@ -30,11 +33,6 @@ class StartCommand extends Command
             'd',
             InputOption::VALUE_NONE,
             'The program works in the background'
-        )->addOption(
-            'watch',
-            'w',
-            InputOption::VALUE_NONE,
-            'If there is a change in the program code, it applies the changes instantly'
         );
     }
 
@@ -51,7 +49,7 @@ class StartCommand extends Command
         /*
          * Get a server state instance
          */
-        $this->serverState = WebsocketServerState::getInstance();
+        $this->serverState = WsServerState::getInstance();
 
         if (!Dependencies::check($this->io)) {
             return Command::FAILURE;
@@ -63,24 +61,17 @@ class StartCommand extends Command
             }
         }
 
-        /*
-         * create watcher server
-         */
-        if ($input->getOption('watch')) {
-            (new Process(function (Process $process) {
-                $this->serverState->setWatcherProcessId($process->pid);
-                (new Watcher())->start();
-            }))->start();
-        }
-
-        /*
-         * create and start server
-         */
-        \Ody\Websocket\WsServer::init()
+        $server = \Ody\Server\ServerManager::init(ServerType::WS_SERVER, WsServerState::getInstance())
             ->createServer(config('websocket'))
             ->setServerConfig(config('websocket.additional'))
             ->registerCallbacks(config("websocket.callbacks"))
-            ->start($input->getOption('daemonize'));
+            ->daemonize($input->getOption('daemonize'))
+            ->getServerInstance();
+
+        WsServerCallbacks::init($server);
+
+        $server->start();
+
 
         return Command::SUCCESS;
     }
