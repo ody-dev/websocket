@@ -1,23 +1,21 @@
 <?php
 namespace Ody\Websocket\Providers;
 
-use Ody\Core\Foundation\Providers\ServiceProvider;
+use Ody\Foundation\Providers\ServiceProvider;
 use Ody\Websocket\Commands\StartCommand;
 use Ody\Websocket\Commands\StopCommand;
 
 class WebsocketServiceProvider extends ServiceProvider
 {
-    public function register()
+    public function register(): void
     {
     }
 
     public function boot(): void
     {
-        if ($this->app->runningInConsole()) {
-            $this->commands = [
-                StartCommand::class,
-                StopCommand::class,
-            ];
-        }
+        $this->registerCommands([
+            StartCommand::class,
+            StopCommand::class,
+        ]);
     }
 }

@@ -2,7 +2,6 @@
 declare(strict_types=1);
 namespace Ody\Websocket;
 
-use Ody\Core\Monolog\Logger;
 use Ody\Swoole\RateLimiter;
 use Swoole\Event;
 use Swoole\Http\Request;
@@ -27,9 +26,9 @@ class WsServerCallbacks
     public static function onStart (Server $server): void
     {
         $protocol = ($server->ssl) ? "https" : "http";
-        Logger::write('info', 'websocket server started successfully');
-        Logger::write('info', "listening on $protocol://$server->host:$server->port");
-        Logger::write('info', 'press Ctrl+C to stop the server');
+        logger()->info('websocket server started successfully');
+        logger()->info("listening on $protocol://$server->host:$server->port");
+        logger()->info('press Ctrl+C to stop the server');
     }
 
     /*
@@ -43,7 +42,7 @@ class WsServerCallbacks
     {
         // Handle incoming requests
         // TODO: Implement routes
-        Logger::write('info', "received request from broadcasting channel");
+        logger()->info("received request from broadcasting channel");
         if ($request->header["x-api-key"] !== config('websocket.secret_key')) {
             $response->status(401);
             $response->end();
@@ -55,7 +54,7 @@ class WsServerCallbacks
             if(static::$server->isEstablished($fd))
             {
                 $clientName = sprintf("Client-%'.06d\n", $fd);
-                Logger::write('info', "pushing event to $clientName...");
+//                Logger::write('info', "pushing event to $clientName...");
                 static::$server->push($fd, $request->getContent());
             }
         }
@@ -84,7 +83,7 @@ class WsServerCallbacks
 //        }
 
         if ($request->header["sec-websocket-protocol"] !== config('websocket.secret_key')) {
-            Logger::write('error', "not authenticated");
+            logger()->warning("not authenticated");
             $response->status(401);
             $response->end();
             return false;
@@ -92,14 +91,14 @@ class WsServerCallbacks
 
         $key = $request->header['sec-websocket-key'] ?? '';
         if (!preg_match('#^[+/0-9A-Za-z]{21}[AQgw]==$#', $key)) {
-            Logger::write('error', "handshake failed (1)");
+            logger()->warning("handshake failed (1)");
             $response->end();
             return false;
         }
 
         if (strlen(base64_decode($key)) !== 16) {
             $response->end();
-            Logger::write('error', "handshake failed (2)");
+            logger()->warning("handshake failed (2)");
             return false;
         }
 
@@ -119,10 +118,10 @@ class WsServerCallbacks
 
         $response->status(101);
         $response->end();
-        Logger::write('info', "handshake done");
+        logger()->info("handshake done");
 
         Event::defer(function () use ($request, $response) {
-            Logger::write('info', "client connected");
+//            Logger::write('info', "client connected");
             self::onOpen($request, $response);
         });
 
@@ -139,20 +138,20 @@ class WsServerCallbacks
             'name' => sprintf($clientName)
         ]);
 
-        Logger::write('info', "connection <{$fd}> open by {$clientName}. Total connections: " . static::$fds->count());
+        logger()->info("connection <{$fd}> open by {$clientName}. Total connections: " . static::$fds->count());
     }
 
     public static function onClose(Server $server, $fd): void
     {
         static::$fds->del((string) $fd);
-        Logger::write('info', "connection close: {$fd}, total connections: " . static::$fds->count());
+        logger()->info("connection close: {$fd}, total connections: " . static::$fds->count());
     }
 
     public static function onDisconnect(Server $server, int $fd): void
     {
         static::$fds->del((string) $fd);
         echo "Disconnect: {$fd}, total connections: " . static::$fds->count() . "\n\n";
-        Logger::write('info', "disconnect: {$fd}, total connections: " . static::$fds->count());
+        logger()->info("disconnect: {$fd}, total connections: " . static::$fds->count());
     }
 
     public static function onMessage (Server $server, Frame $frame): void
@@ -160,7 +159,7 @@ class WsServerCallbacks
         // Check for a ping event using the OpCode
         if($frame->opcode === WEBSOCKET_OPCODE_PING)
         {
-            Logger::write('info', "Ping frame received: Code {$frame->opcode}");
+            logger()->info("Ping frame received: Code {$frame->opcode}");
             $pongFrame = new Frame;
             $pongFrame->opcode = WEBSOCKET_OPCODE_PONG;
             $pongFrame->finish = true;
@@ -172,7 +171,7 @@ class WsServerCallbacks
 
         $sender = static::$fds->get(strval($frame->fd), "name");
 
-        Logger::write('info', "received from " . $sender . ", message: {$frame->data}");
+        logger()->info("received from " . $sender . ", message: {$frame->data}");
     }
 
 
@@ -223,6 +222,9 @@ class WsServerCallbacks
 
     public static function onWorkerStart(Server $server, int $workerId): void
     {
+        // TODO: register worker ids elsewhere
+        logger()->debug('WsServerCallbacks: onWorkerStart');
+
         if ($workerId == config('websocket.additional.worker_num') - 1){
             $workerIds = [];
             for ($i = 0; $i < config('websocket.additional.worker_num'); $i++){
