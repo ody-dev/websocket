@@ -241,6 +241,7 @@ class ChannelManager
     {
         // Check if channel exists
         if (!$this->channels->exists($channel)) {
+            $this->logger->warning("Attempted to broadcast to non-existent channel: {$channel}");
             throw new ChannelException("Channel {$channel} does not exist");
         }
 
@@ -255,21 +256,28 @@ class ChannelManager
         $subscribers = $this->getChannelSubscribers($channel);
         $sentCount = 0;
 
+        $this->logger->debug("Broadcasting to channel '{$channel}', event '{$event}' with payload: " . json_encode($payload));
+        $this->logger->debug("Found " . count($subscribers) . " subscribers: " . implode(', ', $subscribers));
+
         // Send message to each subscribed client
         foreach ($subscribers as $fd) {
             // Skip the excluded client if specified
             if ($except !== null && $fd === $except) {
+                $this->logger->debug("Skipping client {$fd} (excluded)");
                 continue;
             }
 
             // Ensure connection is still active
             if ($this->server->isEstablished($fd)) {
+                $this->logger->debug("Sending message to client {$fd}");
                 $this->server->push($fd, $message);
                 $sentCount++;
+            } else {
+                $this->logger->debug("Client {$fd} is no longer connected, skipping");
             }
         }
 
-        $this->logger->debug("Broadcast {$event} to {$sentCount} clients on {$channel}");
+        $this->logger->debug("Successfully sent message to {$sentCount} clients on {$channel}");
 
         return $sentCount;
     }

@@ -65,7 +65,7 @@ class WsServerCallbacks
     {
         // Handle incoming requests
         logger()->info("received request from broadcasting channel");
-        if ($request->header["x-api-key"] !== config('websocket.secret_key')) {
+        if (isset($request->header["x-api-key"]) && $request->header["x-api-key"] !== config('websocket.secret_key')) {
             $response->status(401);
             $response->end();
             return;
