@@ -3,30 +3,33 @@ namespace Ody\Websocket\Providers;
 
 use Ody\Foundation\Providers\ServiceProvider;
 use Ody\Websocket\Channel\ChannelClient;
-use Ody\Websocket\Channel\ChannelManager;
 use Ody\Websocket\Commands\StartCommand;
 use Ody\Websocket\Commands\StopCommand;
-use Ody\Websocket\WsServerCallbacks;
+use Ody\Websocket\Middleware\WebSocketMiddlewareInterface;
+use Ody\Websocket\WebSocketServer;
 
 class WebsocketServiceProvider extends ServiceProvider
 {
+    /**
+     * @var bool
+     */
+    private static bool $middlewareRegistered = false;
+
     public function register(): void
     {
+        if ($this->isRunningInConsole()) {
+            return;
+        }
+
         // Register the channel client as a singleton
         $this->container->singleton(ChannelClient::class, function ($container) {
             // Get the channel manager from the WebSocket server
-            $channelManager = WsServerCallbacks::getChannelManager();
+            $wsServer = WebSocketServer::getInstance();
+            $channelManager = $wsServer->getChannelManager();
 
-            // If no channel manager is available yet, create a new one
+            // If no channel manager is available yet, return null or create a new one
             if (!$channelManager) {
-                $channelManager = $container->has(ChannelManager::class)
-                    ? $container->make(ChannelManager::class)
-                    : null;
-            }
-
-            // We can't create a channel client without a channel manager
-            if (!$channelManager) {
-                throw new \RuntimeException('Cannot create ChannelClient without a ChannelManager');
+                return null;
             }
 
             return new ChannelClient($channelManager);
@@ -34,6 +37,11 @@ class WebsocketServiceProvider extends ServiceProvider
 
         // Register an alias for the channel client
         $this->container->alias(ChannelClient::class, 'websocket.channel');
+
+        // Register WebSocketServer singleton
+        $this->container->singleton(WebSocketServer::class, function () {
+            return WebSocketServer::getInstance();
+        });
     }
 
     public function boot(): void
@@ -45,7 +53,11 @@ class WebsocketServiceProvider extends ServiceProvider
             StopCommand::class,
         ]);
 
-        $this->registerMiddleware();
+        // Only register middleware once per process lifetime
+        if (!self::$middlewareRegistered) {
+            $this->registerMiddleware();
+            self::$middlewareRegistered = true;
+        }
     }
 
     protected function registerMiddleware(): void
@@ -53,22 +65,27 @@ class WebsocketServiceProvider extends ServiceProvider
         $config = config('websocket.middleware');
         $params = config('websocket.middleware_params');
 
+        $wsServer = WebSocketServer::getInstance();
+
         // Register global middleware (applies to both pipelines)
         foreach ($config['global'] ?? [] as $middlewareClass) {
             $middleware = $this->resolveMiddleware($middlewareClass, $params[$middlewareClass] ?? []);
-            WsServerCallbacks::addMiddleware($middleware);
+            $wsServer->addMiddleware($middleware);
+            logger()->debug('Websocket global middleware registered');
         }
 
         // Register handshake-specific middleware
         foreach ($config['handshake'] ?? [] as $middlewareClass) {
             $middleware = $this->resolveMiddleware($middlewareClass, $params[$middlewareClass] ?? []);
-            WsServerCallbacks::addHandshakeMiddleware($middleware);
+            $wsServer->addHandshakeMiddleware($middleware);
+            logger()->debug('Websocket handshake middleware registered');
         }
 
         // Register message-specific middleware
         foreach ($config['message'] ?? [] as $middlewareClass) {
             $middleware = $this->resolveMiddleware($middlewareClass, $params[$middlewareClass] ?? []);
-            WsServerCallbacks::addMessageMiddleware($middleware);
+            $wsServer->addMessageMiddleware($middleware);
+            logger()->debug('Websocket message middleware registered');
         }
     }
 
@@ -77,7 +94,7 @@ class WebsocketServiceProvider extends ServiceProvider
      *
      * @param string $middlewareClass
      * @param array $params
-     * @return object
+     * @return WebSocketMiddlewareInterface
      */
     protected function resolveMiddleware(string $middlewareClass, array $params = []): object
     {

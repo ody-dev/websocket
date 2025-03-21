@@ -12,6 +12,7 @@ use Ody\Websocket\WsEvent;
 return [
     'host' => env('WEBSOCKET_HOST', '127.0.0.1'),
     'port' => env('WEBSOCKET_PORT', 9502),
+    'mode' => SWOOLE_PROCESS,
     'secret_key' => env('WEBSOCKET_SECRET_KEY', '123123123'),
     'sock_type' => SWOOLE_SOCK_TCP,
     'enable_api' => true,
@@ -29,6 +30,7 @@ return [
 
     "additional" => [
         "worker_num" => env('WEBSOCKET_WORKER_COUNT', swoole_cpu_num() * 2),
+        'dispatch_mode' => 2, // Important: This ensures connections stay with their worker, does not work in SWOOLE_BASE
         /*
          * log level
          * SWOOLE_LOG_DEBUG (default)
@@ -40,6 +42,9 @@ return [
          */
         'log_level' => SWOOLE_LOG_DEBUG,
         'log_file' => base_path('storage/logs/ody_websockets.log'),
+
+        'ssl_cert_file' => null,
+        'ssl_key_file' => null,
     ],
 
     'runtime' => [
@@ -63,7 +68,7 @@ return [
 
         // Handshake-specific middleware
         'handshake' => [
-            \Ody\Websocket\Middleware\AuthenticationMiddleware::class,
+//            \Ody\Websocket\Middleware\AuthenticationMiddleware::class,
 //            \Ody\Websocket\Middleware\OriginValidationMiddleware::class,
 //            \Ody\Websocket\Middleware\ConnectionRateLimitMiddleware::class,
         ],
@@ -101,10 +106,5 @@ return [
     'rate_limits' => [
         'messages_per_minute' => env('WEBSOCKET_RATE_LIMIT', 60),
         'connections_per_minute' => env('WEBSOCKET_CONNECTION_LIMIT', 10),
-    ],
-
-    'ssl' => [
-        'ssl_cert_file' => null,
-        'ssl_key_file' => null,
     ],
 ];

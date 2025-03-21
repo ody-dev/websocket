@@ -2,220 +2,81 @@
 declare(strict_types=1);
 namespace Ody\Websocket;
 
-use Ody\Foundation\Application;
 use Ody\Foundation\Bootstrap;
 use Ody\Foundation\Http\RequestCallback;
 use Ody\Foundation\HttpServer;
-use Ody\Websocket\Channel\ChannelManager;
-use Ody\Websocket\Middleware\MiddlewareManager;
-use Ody\Websocket\Middleware\WebSocketMiddlewareInterface;
-use Swoole\Coroutine;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
-use Swoole\Table;
 use Swoole\WebSocket\Frame;
 use Swoole\Websocket\Server;
 
 class WsServerCallbacks
 {
     /**
-     * @var Server
+     * @var WebSocketServer
      */
-    private static Server $server;
+    private static WebSocketServer $wsServer;
 
     /**
-     * @var Table
+     * Initialize the server
      */
-    public static Table $fds;
-
-    /**
-     * @var ChannelManager|null
-     */
-    private static ?ChannelManager $channelManager = null;
-
-    /**
-     * @var MiddlewareManager
-     */
-    private static MiddlewareManager $middlewareManager;
-
-    /**
-     * @var bool
-     */
-    private static bool $initialized = false;
-
-    /**
-     * @var WebSocketMiddlewareInterface[]
-     */
-    protected array $handshakeMiddleware = [];
-
-    /**
-     * @var WebSocketMiddlewareInterface[]
-     */
-    protected array $messageMiddleware = [];
-
-    /**
-     * @var Application|null
-     */
-    private static ?Application $app = null;
-
-    /**
-     * Queue of middleware to be registered after initialization
-     */
-    private static array $middlewareQueue = [
-        'handshake' => [],
-        'message' => [],
-        'global' => []
-    ];
-
-    public static function init($server): void
+    public static function init(Server $server): void
     {
-        static::$server = $server;
-        static::$middlewareManager = new MiddlewareManager();
-        static::$initialized = true;
+        self::$wsServer = WebSocketServer::getInstance();
+        self::$wsServer->initialize($server);
 
-        // Process queued middleware
-        self::processMiddlewareQueue();
-        
-        static::createFdsTable();
-        static::initializeChannelManager($server);
-        static::onStart(static::$server);
+        self::onStart($server);
 
         if (config('websocket.enable_api')) {
             // Get existing application instance
-            self::$app = Bootstrap::init();
+            $app = Bootstrap::init();
 
             // Ensure the application is bootstrapped
-            if (!self::$app->isBootstrapped()) {
-                self::$app->bootstrap();
+            if (!$app->isBootstrapped()) {
+                $app->bootstrap();
             }
 
+            self::$wsServer->setApplication($app);
             logger()->debug("REST API initialized.");
         }
     }
 
     /**
-     * Process queued middleware after initialization
+     * Add middleware to both pipelines
      */
-    private static function processMiddlewareQueue(): void
+    public static function addMiddleware($middleware): void
     {
-        // Add handshake middleware
-        foreach (static::$middlewareQueue['handshake'] as $middleware) {
-            static::$middlewareManager->addHandshakeMiddleware($middleware);
-        }
-
-        // Add message middleware
-        foreach (static::$middlewareQueue['message'] as $middleware) {
-            static::$middlewareManager->addMessageMiddleware($middleware);
-        }
-
-        // Add middleware to both pipelines
-        foreach (static::$middlewareQueue['global'] as $middleware) {
-            static::$middlewareManager->addMiddleware($middleware);
-        }
-
-        // Clear the queue
-        static::$middlewareQueue = [
-            'handshake' => [],
-            'message' => [],
-            'global' => []
-        ];
+        self::$wsServer->addMiddleware($middleware);
     }
 
     /**
-     * Queue handshake middleware for registration
+     * Add handshake middleware
      */
-    public static function addHandshakeMiddleware(WebSocketMiddlewareInterface $middleware): void
+    public static function addHandshakeMiddleware($middleware): void
     {
-        if (static::$initialized) {
-            static::$middlewareManager->addHandshakeMiddleware($middleware);
-        } else {
-            static::$middlewareQueue['handshake'][] = $middleware;
-        }
+        self::$wsServer->addHandshakeMiddleware($middleware);
     }
 
     /**
-     * Queue message middleware for registration
+     * Add message middleware
      */
-    public static function addMessageMiddleware(WebSocketMiddlewareInterface $middleware): void
+    public static function addMessageMiddleware($middleware): void
     {
-        if (static::$initialized) {
-            static::$middlewareManager->addMessageMiddleware($middleware);
-        } else {
-            static::$middlewareQueue['message'][] = $middleware;
-        }
-    }
-
-    /**
-     * Queue middleware for both pipelines
-     */
-    public static function addMiddleware(WebSocketMiddlewareInterface $middleware): void
-    {
-        if (static::$initialized) {
-            static::$middlewareManager->addMiddleware($middleware);
-        } else {
-            static::$middlewareQueue['global'][] = $middleware;
-        }
-    }
-
-    // Rest of the implementation with separate pipeline creation
-    // using the appropriate middleware arrays
-
-    protected function createHandshakePipeline(callable $finalHandler): callable
-    {
-        // Start with the final handler
-        $pipeline = $finalHandler;
-
-        // Use handshake-specific middleware
-        foreach (array_reverse($this->handshakeMiddleware) as $middleware) {
-            $next = $pipeline;
-            $pipeline = function (Request $request, Response $response) use ($middleware, $next) {
-                return $middleware->processHandshake($request, $response, $next);
-            };
-        }
-
-        return $pipeline;
-    }
-
-    protected function createMessagePipeline(callable $finalHandler): callable
-    {
-        // Start with the final handler
-        $pipeline = $finalHandler;
-
-        // Use message-specific middleware
-        foreach (array_reverse($this->messageMiddleware) as $middleware) {
-            $next = $pipeline;
-            $pipeline = function (Server $server, Frame $frame) use ($middleware, $next) {
-                return $middleware->processMessage($server, $frame, $next);
-            };
-        }
-
-        return $pipeline;
-    }
-
-    /**
-     * Initialize the channel manager
-     *
-     * @param Server $server WebSocket server instance
-     * @return void
-     */
-    public static function initializeChannelManager(Server $server): void
-    {
-        static::$channelManager = new ChannelManager($server, logger());
-
-        // Any additional setup for the channel manager can go here
+        self::$wsServer->addMessageMiddleware($middleware);
     }
 
     /**
      * Get the channel manager instance
-     *
-     * @return ChannelManager|null
      */
-    public static function getChannelManager(): ?ChannelManager
+    public static function getChannelManager()
     {
-        return static::$channelManager;
+        return self::$wsServer->getChannelManager();
     }
 
-    public static function onStart (Server $server): void
+    /**
+     * Server started callback
+     */
+    public static function onStart(Server $server): void
     {
         $protocol = ($server->ssl) ? "https" : "http";
         logger()->info('websocket server started successfully');
@@ -223,7 +84,7 @@ class WsServerCallbacks
         logger()->info('press Ctrl+C to stop the server');
     }
 
-    /*
+    /**
      * Handle incoming HTTP requests
      */
     public static function onRequest(Request $request, Response $response): void
@@ -232,20 +93,28 @@ class WsServerCallbacks
             $response->end('API not enabled!');
             return;
         }
-        // Handle incoming requests
+
         logger()->info("received request from broadcasting channel");
 
-        Coroutine::create(function () use ($request, $response) {
-            HttpServer::setContext($request);
+        HttpServer::setContext($request);
 
-            $callback = new RequestCallback(static::$app);
+        $app = self::$wsServer->getApplication();
+        if ($app) {
+            $callback = new RequestCallback($app);
             $callback->handle($request, $response);
-        });
+        } else {
+            $response->end('Application not initialized');
+        }
     }
 
-    public static function onHandshake(Request $request, Response $response): bool
+    /**
+     * Handle WebSocket handshake
+     */
+    public static function onHandShake(Request $request, Response $response): bool
     {
-        return static::$middlewareManager->runHandshakePipeline(
+        $middlewareManager = self::$wsServer->getMiddlewareManager();
+
+        return $middlewareManager->runHandshakePipeline(
             $request,
             $response,
             function (Request $request, Response $response) {
@@ -270,25 +139,25 @@ class WsServerCallbacks
                 logger()->info("handshake done");
 
                 return true;
-
-                return true; // or false if handshake fails
             }
         );
     }
 
+    /**
+     * Handle WebSocket open
+     */
     public static function onOpen(Request $request, Response $response): void
     {
         $fd = $request->fd;
         $clientName = sprintf("Client-%'.06d", $request->fd);
 
-        static::$fds->set((string) $fd, [
-            'fd' => $fd,
-            'name' => sprintf($clientName)
-        ]);
+        self::$wsServer->setConnectionInfo($fd, $clientName);
+        $fdsTable = self::$wsServer->getFdsTable();
 
-        logger()->info("connection <{$fd}> open by {$clientName}. Total connections: " . static::$fds->count());
+        logger()->info("connection <{$fd}> open by {$clientName}. Total connections: " . $fdsTable->count());
 
         // Send welcome message with connection info
+        $server = self::$wsServer->getServer();
         $welcomeMessage = json_encode([
             'event' => 'connection_established',
             'data' => [
@@ -297,45 +166,83 @@ class WsServerCallbacks
             ]
         ]);
 
-        static::$server->push($fd, $welcomeMessage);
+        $server->push($fd, $welcomeMessage);
     }
 
+    /**
+     * Handle WebSocket close
+     */
     public static function onClose(Server $server, $fd): void
     {
         // Handle channel unsubscriptions if channel manager exists
-        if (static::$channelManager) {
-            static::$channelManager->handleDisconnection($fd);
+        $channelManager = self::$wsServer->getChannelManager();
+        if ($channelManager) {
+            $channelManager->handleDisconnection($fd);
         }
 
-        static::$fds->del((string) $fd);
-        logger()->info("connection close: {$fd}, total connections: " . static::$fds->count());
+        self::$wsServer->removeConnectionInfo($fd);
+        $fdsTable = self::$wsServer->getFdsTable();
+
+        logger()->info("connection close: {$fd}, total connections: " . $fdsTable->count());
     }
 
+    /**
+     * Handle WebSocket disconnect
+     */
     public static function onDisconnect(Server $server, int $fd): void
     {
         // Handle channel unsubscriptions if channel manager exists
-        if (static::$channelManager) {
-            static::$channelManager->handleDisconnection($fd);
+        $channelManager = self::$wsServer->getChannelManager();
+        if ($channelManager) {
+            $channelManager->handleDisconnection($fd);
         }
 
-        static::$fds->del((string) $fd);
-        logger()->info("disconnect: {$fd}, total connections: " . static::$fds->count());
+        self::$wsServer->removeConnectionInfo($fd);
+        $fdsTable = self::$wsServer->getFdsTable();
+
+        logger()->info("disconnect: {$fd}, total connections: " . $fdsTable->count());
     }
 
+    /**
+     * Handle WebSocket message
+     */
     public static function onMessage(Server $server, Frame $frame): void
     {
-        static::$middlewareManager->runMessagePipeline(
+        // Handle ping/pong frames
+        if ($frame->opcode === WEBSOCKET_OPCODE_PING) {
+            // Client sent a ping, respond with pong
+            $server->push($frame->fd, '', WEBSOCKET_OPCODE_PONG);
+            return;
+        }
+
+//        if ($frame->opcode === WEBSOCKET_OPCODE_PONG) {
+//            // Client responded to our ping
+//            WebSocketServer::getInstance()->handlePong($frame->fd);
+//            return;
+//        }
+
+        // Handle close frames
+        if ($frame->opcode === WEBSOCKET_OPCODE_CLOSE) {
+            logger()->info("Client {$frame->fd} sent close frame");
+            // The server will automatically respond and trigger onClose
+            return;
+        }
+
+        $middlewareManager = self::$wsServer->getMiddlewareManager();
+
+        $middlewareManager->runMessagePipeline(
             $server,
             $frame,
             function (Server $server, Frame $frame) {
-                // Original message handling logic here
-                $sender = static::$fds->get(strval($frame->fd), "name");
+                // Get sender info
+                $sender = self::$wsServer->getConnectionName($frame->fd) ?: "Unknown";
                 logger()->info("received from " . $sender . ", message: {$frame->data}");
 
                 // Process through channel manager if available
-                if (static::$channelManager) {
+                $channelManager = self::$wsServer->getChannelManager();
+                if ($channelManager) {
                     try {
-                        static::$channelManager->handleClientMessage($frame->fd, $frame);
+                        $channelManager->handleClientMessage($frame->fd, $frame);
                     } catch (\Throwable $e) {
                         logger()->error("Error handling client message: " . $e->getMessage(), [
                             'fd' => $frame->fd,
@@ -357,16 +264,9 @@ class WsServerCallbacks
         );
     }
 
-    private static function createFdsTable(): void
-    {
-        $fds = new Table(1024);
-        $fds->column('fd', Table::TYPE_INT, 4);
-        $fds->column('name', Table::TYPE_STRING, 16);
-        $fds->create();
-
-        static::$fds = $fds;
-    }
-
+    /**
+     * Handle worker start
+     */
     public static function onWorkerStart(Server $server, int $workerId): void
     {
         logger()->debug('WsServerCallbacks: onWorkerStart');
@@ -377,10 +277,10 @@ class WsServerCallbacks
                 $workerIds[$i] = $server->getWorkerPid($i);
             }
 
-            $serveState = WsServerState::getInstance();
-            $serveState->setMasterProcessId($server->getMasterPid());
-            $serveState->setManagerProcessId($server->getManagerPid());
-            $serveState->setWorkerProcessIds($workerIds);
+            $serverState = WsServerState::getInstance();
+            $serverState->setMasterProcessId($server->getMasterPid());
+            $serverState->setManagerProcessId($server->getManagerPid());
+            $serverState->setWorkerProcessIds($workerIds);
         }
     }
 }
