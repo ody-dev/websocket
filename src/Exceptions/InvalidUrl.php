@@ -1,5 +1,5 @@
 <?php
-namespace Ody\Websockets\Exceptions;
+namespace Ody\Websocket\Exceptions;
 
 class InvalidUrl extends \InvalidArgumentException
 {

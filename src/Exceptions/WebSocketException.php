@@ -1,6 +1,6 @@
 <?php
 
-namespace Ody\Websockets\Exceptions;
+namespace Ody\Websocket\Exceptions;
 
 class WebSocketException extends \Exception
 {
