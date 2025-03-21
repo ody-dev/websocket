@@ -18,11 +18,6 @@ Route::post('/api/broadcast', function (ServerRequestInterface $request, Respons
         return $response->withStatus(400)->json(['error' => 'Missing required fields']);
     }
 
-    // Authenticate the request (using API key or token)
-//    if (!isset($data['api_key']) || $data['api_key'] !== config('websocket.api_key')) {
-//        return $response->withStatus(401)->json(['error' => 'Unauthorized']);
-//    }
-
     // Broadcast the message
     $sentCount = WebSocket::publish($data['channel'], $data['event'], $data['data']);
 

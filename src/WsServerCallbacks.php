@@ -2,9 +2,15 @@
 declare(strict_types=1);
 namespace Ody\Websocket;
 
+use Ody\Foundation\Application;
+use Ody\Foundation\Bootstrap;
+use Ody\Foundation\Http\RequestCallback;
+use Ody\Foundation\HttpServer;
 use Ody\Swoole\RateLimiter;
 use Ody\Websocket\Channel\ChannelManager;
-use Ody\Websocket\Channel\Exceptions\ChannelException;
+use Ody\Websocket\Middleware\MiddlewareManager;
+use Ody\Websocket\Middleware\WebSocketMiddlewareInterface;
+use Swoole\Coroutine;
 use Swoole\Event;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
@@ -18,13 +24,40 @@ class WsServerCallbacks
     public static Table $fds;
     private static RateLimiter $rateLimiter;
     private static ?ChannelManager $channelManager = null;
+    private static MiddlewareManager $middlewareManager;
+    private static ?Application $app = null;
 
     public static function init($server): void
     {
         static::$server = $server;
+        static::$middlewareManager = new MiddlewareManager();
+        
         static::createFdsTable();
         static::initializeChannelManager($server);
         static::onStart(static::$server);
+
+        if (config('websocket.enable_api')) {
+            // Get existing application instance
+            self::$app = Bootstrap::init();
+
+            // Ensure the application is bootstrapped
+            if (!self::$app->isBootstrapped()) {
+                self::$app->bootstrap();
+            }
+
+            logger()->debug("REST API initialized.");
+        }
+    }
+
+    /**
+     * Add middleware to the pipeline
+     *
+     * @param WebSocketMiddlewareInterface $middleware
+     * @return void
+     */
+    public static function addMiddleware($middleware): void
+    {
+        static::$middlewareManager->addMiddleware($middleware);
     }
 
     /**
@@ -63,56 +96,19 @@ class WsServerCallbacks
      */
     public static function onRequest(Request $request, Response $response): void
     {
+        if (!config('websocket.enable_api')) {
+            $response->end('API not enabled!');
+            return;
+        }
         // Handle incoming requests
         logger()->info("received request from broadcasting channel");
-        if (isset($request->header["x-api-key"]) && $request->header["x-api-key"] !== config('websocket.secret_key')) {
-            $response->status(401);
-            $response->end();
-            return;
-        }
 
-        // Parse request content
-        $content = json_decode($request->getContent(), true);
+        Coroutine::create(function () use ($request, $response) {
+            HttpServer::setContext($request);
 
-        if (!$content || !isset($content['channel']) || !isset($content['event'])) {
-            $response->status(400);
-            $response->end(json_encode(['error' => 'Invalid request format']));
-            return;
-        }
-
-        $channel = $content['channel'];
-        $event = $content['event'];
-        $data = $content['data'] ?? [];
-
-        try {
-            if (static::$channelManager) {
-                // Use channel manager to broadcast to the channel
-                $sentCount = static::$channelManager->broadcast($channel, $event, $data);
-
-                $response->status(200);
-                $response->end(json_encode([
-                    'success' => true,
-                    'sent_to' => $sentCount
-                ]));
-            } else {
-                // Fall back to legacy broadcasting if channel manager not available
-                foreach (static::$server->connections as $fd) {
-                    if (static::$server->isEstablished($fd)) {
-                        $clientName = sprintf("Client-%'.06d\n", $fd);
-                        static::$server->push($fd, $request->getContent());
-                    }
-                }
-
-                $response->status(200);
-                $response->end(json_encode(['success' => true]));
-            }
-        } catch (ChannelException $e) {
-            $response->status(404);
-            $response->end(json_encode(['error' => $e->getMessage()]));
-        } catch (\Throwable $e) {
-            $response->status(500);
-            $response->end(json_encode(['error' => 'Server error: ' . $e->getMessage()]));
-        }
+            $callback = new RequestCallback(static::$app);
+            $callback->handle($request, $response);
+        });
     }
 
     public static function onHandshake(Request $request, Response $response): bool

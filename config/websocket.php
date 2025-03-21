@@ -13,13 +13,17 @@ return [
     'host' => env('WEBSOCKET_HOST', '127.0.0.1'),
     'port' => env('WEBSOCKET_PORT', 9502),
     'sock_type' => SWOOLE_SOCK_TCP,
+    'enable_api' => true,
     'callbacks' => [
         WsEvent::ON_HAND_SHAKE => [\Ody\Websocket\WsServerCallbacks::class, 'onHandShake'],
         WsEvent::ON_WORKER_START => [\Ody\Websocket\WsServerCallbacks::class, 'onWorkerStart'],
         WsEvent::ON_MESSAGE => [\Ody\Websocket\WsServerCallbacks::class, 'onMessage'],
         WsEvent::ON_CLOSE => [\Ody\Websocket\WsServerCallbacks::class, 'onClose'],
-        WsEvent::ON_REQUEST => [\Ody\Websocket\WsServerCallbacks::class, 'onRequest'],
         WsEvent::ON_DISCONNECT => [\Ody\Websocket\WsServerCallbacks::class, 'onDisconnect'],
+        // if enable_api is set to true, the Application class will be
+        // bootstrapped and expose a REST API. This enables all normal
+        // functionality of ODY framework including route middleware.
+        WsEvent::ON_REQUEST => [\Ody\Websocket\WsServerCallbacks::class, 'onRequest'],
     ],
     'secret_key' => env('WEBSOCKET_SECRET_KEY', '123123123'),
     "additional" => [
@@ -33,7 +37,7 @@ return [
          * SWOOLE_LOG_WARNING
          * SWOOLE_LOG_ERROR
          */
-        'log_level' => SWOOLE_LOG_DEBUG ,
+        'log_level' => SWOOLE_LOG_DEBUG,
         'log_file' => base_path('storage/logs/ody_websockets.log'),
     ],
     'runtime' => [

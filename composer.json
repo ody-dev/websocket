@@ -11,8 +11,8 @@
   ],
   "require": {
     "php": ">=8.3",
-    "ody/swoole": ">=0.1.0",
-    "ody/server": ">=0.1.0"
+    "ody/swoole": "^0.1.0",
+    "ody/server": "^0.1.0"
   },
   "require-dev": {
     "swoole/ide-helper": "^6.0",

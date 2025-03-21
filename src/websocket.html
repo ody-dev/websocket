@@ -410,6 +410,7 @@
                     };
 
                     this.socket.onmessage = (event) => {
+                        console.log("RAW MESSAGE RECEIVED:", event.data);
                         this.handleMessage(event.data);
                     };
                 } catch (error) {
@@ -728,6 +729,10 @@
 
                     // Trigger channel event
                     this.trigger(`${channelName}:${event}`, eventData);
+
+                    if (typeof window.registerChannelEvent === 'function') {
+                        window.registerChannelEvent(channelName, event);
+                    }
                 }
             } catch (error) {
                 this.log('Error handling message:', error);
@@ -899,6 +904,8 @@
                     addLogEntry(`Unsubscribed from channel: ${data.channel}`, 'info');
                     updateChannelSubscription(data.channel, false);
                 });
+
+                window.registerChannelEvent = registerChannelEvent;
 
                 // Connect
                 wsClient.connect()
@@ -1093,6 +1100,20 @@
             publishBtn.disabled = publishChannelSelect.value === '';
         }
 
+        function registerChannelEvent(channelName, eventName) {
+            if (!wsClient) return;
+
+            const eventKey = `${channelName}:${eventName}`;
+
+            // Only register if we haven't already for this event
+            if (!wsClient.eventCallbacks[eventKey]) {
+                wsClient.on(eventKey, (data) => {
+                    addChannelEvent(channelName, eventName, data);
+                });
+                console.log(`Registered listener for ${eventKey}`);
+            }
+        }
+
         function addChannelToUI(channelName) {
             // Create channel item
             const channelItem = document.createElement('div');
@@ -1137,6 +1158,37 @@
 
             // Update dropdown lists
             updateChannelDropdowns();
+
+            // Register channel event listeners
+            if (wsClient) {
+                // Common event types to listen for
+                const commonEvents = [
+                    'subscription_succeeded',
+                    'message',
+                    'created',
+                    'updated',
+                    'deleted',
+                    'client-message'
+                ];
+
+                // Register listeners for common events
+                commonEvents.forEach(event => {
+                    registerChannelEvent(channelName, event);
+                });
+
+                // Listen for new event types
+                wsClient.on('message', (data) => {
+                    try {
+                        const message = JSON.parse(data);
+                        if (message.channel === channelName && message.event) {
+                            // Register a listener for this event type if we see a new one
+                            registerChannelEvent(channelName, message.event);
+                        }
+                    } catch (e) {
+                        console.error("Error parsing message:", e);
+                    }
+                });
+            }
         }
 
         function updateChannelDropdowns() {
@@ -1162,28 +1214,42 @@
         }
 
         function addChannelEvent(channelName, eventName, eventData) {
+            console.log(`Adding event to UI: ${channelName} - ${eventName}`, eventData);
+
             // Check if we're viewing this channel's events
             if (eventChannelSelect.value === channelName || eventChannelSelect.value === '') {
                 // Remove placeholder if present
                 const placeholder = channelEventsContainer.querySelector('p');
                 if (placeholder) {
-                    channelEventsContainer.removeChild(placeholder);
+                    placeholder.remove();
                 }
 
                 // Create event item
                 const eventItem = document.createElement('div');
                 eventItem.className = 'channel-item';
+
+                // Format the data nicely
+                let dataStr;
+                try {
+                    dataStr = JSON.stringify(eventData, null, 2);
+                } catch (e) {
+                    dataStr = String(eventData);
+                }
+
                 eventItem.innerHTML = `
-                        <div><strong>Event:</strong> ${eventName}</div>
-                        <div><strong>Data:</strong> <pre>${JSON.stringify(eventData, null, 2)}</pre></div>
-                        <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
-                    `;
+            <div><strong>Event:</strong> ${eventName}</div>
+            <div><strong>Data:</strong> <pre>${dataStr}</pre></div>
+            <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
+        `;
 
                 // Add to container
                 channelEventsContainer.appendChild(eventItem);
 
+                // Scroll to bottom
+                channelEventsContainer.scrollTop = channelEventsContainer.scrollHeight;
+
                 // Add log entry
-                addLogEntry(`Received event ${eventName} from ${channelName}: ${JSON.stringify(eventData)}`, 'event');
+                addLogEntry(`Received event ${eventName} from ${channelName}`, 'event');
             }
         }
 
