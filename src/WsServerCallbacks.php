@@ -6,7 +6,6 @@ use Ody\Foundation\Application;
 use Ody\Foundation\Bootstrap;
 use Ody\Foundation\Http\RequestCallback;
 use Ody\Foundation\HttpServer;
-use Ody\Swoole\RateLimiter;
 use Ody\Websocket\Channel\ChannelManager;
 use Ody\Websocket\Middleware\MiddlewareManager;
 use Ody\Websocket\Middleware\WebSocketMiddlewareInterface;
@@ -20,17 +19,63 @@ use Swoole\Websocket\Server;
 
 class WsServerCallbacks
 {
+    /**
+     * @var Server
+     */
     private static Server $server;
+
+    /**
+     * @var Table
+     */
     public static Table $fds;
-    private static RateLimiter $rateLimiter;
+
+    /**
+     * @var ChannelManager|null
+     */
     private static ?ChannelManager $channelManager = null;
+
+    /**
+     * @var MiddlewareManager
+     */
     private static MiddlewareManager $middlewareManager;
+
+    /**
+     * @var bool
+     */
+    private static bool $initialized = false;
+
+    /**
+     * @var WebSocketMiddlewareInterface[]
+     */
+    protected array $handshakeMiddleware = [];
+
+    /**
+     * @var WebSocketMiddlewareInterface[]
+     */
+    protected array $messageMiddleware = [];
+
+    /**
+     * @var Application|null
+     */
     private static ?Application $app = null;
+
+    /**
+     * Queue of middleware to be registered after initialization
+     */
+    private static array $middlewareQueue = [
+        'handshake' => [],
+        'message' => [],
+        'global' => []
+    ];
 
     public static function init($server): void
     {
         static::$server = $server;
         static::$middlewareManager = new MiddlewareManager();
+        static::$initialized = true;
+
+        // Process queued middleware
+        self::processMiddlewareQueue();
         
         static::createFdsTable();
         static::initializeChannelManager($server);
@@ -50,14 +95,102 @@ class WsServerCallbacks
     }
 
     /**
-     * Add middleware to the pipeline
-     *
-     * @param WebSocketMiddlewareInterface $middleware
-     * @return void
+     * Process queued middleware after initialization
      */
-    public static function addMiddleware($middleware): void
+    private static function processMiddlewareQueue(): void
     {
-        static::$middlewareManager->addMiddleware($middleware);
+        // Add handshake middleware
+        foreach (static::$middlewareQueue['handshake'] as $middleware) {
+            static::$middlewareManager->addHandshakeMiddleware($middleware);
+        }
+
+        // Add message middleware
+        foreach (static::$middlewareQueue['message'] as $middleware) {
+            static::$middlewareManager->addMessageMiddleware($middleware);
+        }
+
+        // Add middleware to both pipelines
+        foreach (static::$middlewareQueue['global'] as $middleware) {
+            static::$middlewareManager->addMiddleware($middleware);
+        }
+
+        // Clear the queue
+        static::$middlewareQueue = [
+            'handshake' => [],
+            'message' => [],
+            'global' => []
+        ];
+    }
+
+    /**
+     * Queue handshake middleware for registration
+     */
+    public static function addHandshakeMiddleware(WebSocketMiddlewareInterface $middleware): void
+    {
+        if (static::$initialized) {
+            static::$middlewareManager->addHandshakeMiddleware($middleware);
+        } else {
+            static::$middlewareQueue['handshake'][] = $middleware;
+        }
+    }
+
+    /**
+     * Queue message middleware for registration
+     */
+    public static function addMessageMiddleware(WebSocketMiddlewareInterface $middleware): void
+    {
+        if (static::$initialized) {
+            static::$middlewareManager->addMessageMiddleware($middleware);
+        } else {
+            static::$middlewareQueue['message'][] = $middleware;
+        }
+    }
+
+    /**
+     * Queue middleware for both pipelines
+     */
+    public static function addMiddleware(WebSocketMiddlewareInterface $middleware): void
+    {
+        if (static::$initialized) {
+            static::$middlewareManager->addMiddleware($middleware);
+        } else {
+            static::$middlewareQueue['global'][] = $middleware;
+        }
+    }
+
+    // Rest of the implementation with separate pipeline creation
+    // using the appropriate middleware arrays
+
+    protected function createHandshakePipeline(callable $finalHandler): callable
+    {
+        // Start with the final handler
+        $pipeline = $finalHandler;
+
+        // Use handshake-specific middleware
+        foreach (array_reverse($this->handshakeMiddleware) as $middleware) {
+            $next = $pipeline;
+            $pipeline = function (Request $request, Response $response) use ($middleware, $next) {
+                return $middleware->processHandshake($request, $response, $next);
+            };
+        }
+
+        return $pipeline;
+    }
+
+    protected function createMessagePipeline(callable $finalHandler): callable
+    {
+        // Start with the final handler
+        $pipeline = $finalHandler;
+
+        // Use message-specific middleware
+        foreach (array_reverse($this->messageMiddleware) as $middleware) {
+            $next = $pipeline;
+            $pipeline = function (Server $server, Frame $frame) use ($middleware, $next) {
+                return $middleware->processMessage($server, $frame, $next);
+            };
+        }
+
+        return $pipeline;
     }
 
     /**
@@ -113,51 +246,61 @@ class WsServerCallbacks
 
     public static function onHandshake(Request $request, Response $response): bool
     {
-        // Verify authentication token
-        if ($request->header["sec-websocket-protocol"] !== config('websocket.secret_key')) {
-            logger()->warning("not authenticated");
-            $response->status(401);
-            $response->end();
-            return false;
-        }
+        return static::$middlewareManager->runHandshakePipeline(
+            $request,
+            $response,
+            function (Request $request, Response $response) {
+                Event::defer(function () use ($request, $response) {
+                    self::onOpen($request, $response);
+                });
 
-        // Complete WebSocket handshake
-        $key = $request->header['sec-websocket-key'] ?? '';
-        if (!preg_match('#^[+/0-9A-Za-z]{21}[AQgw]==$#', $key)) {
-            logger()->warning("handshake failed (1)");
-            $response->end();
-            return false;
-        }
-
-        if (strlen(base64_decode($key)) !== 16) {
-            $response->end();
-            logger()->warning("handshake failed (2)");
-            return false;
-        }
-
-        $response->header('Upgrade', 'websocket');
-        $response->header('Connection', 'Upgrade');
-        $response->header(
-            'Sec-WebSocket-Accept',
-            base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))
+                return true; // or false if handshake fails
+            }
         );
-        $response->header('Sec-WebSocket-Version', '13');
 
-        $protocol = $request->header['sec-websocket-protocol'] ?? null;
-
-        if ($protocol !== null) {
-            $response->header('Sec-WebSocket-Protocol', $protocol);
-        }
-
-        $response->status(101);
-        $response->end();
-        logger()->info("handshake done");
-
-        Event::defer(function () use ($request, $response) {
-            self::onOpen($request, $response);
-        });
-
-        return true;
+        // Verify authentication token
+//        if ($request->header["sec-websocket-protocol"] !== config('websocket.secret_key')) {
+//            logger()->warning("not authenticated");
+//            $response->status(401);
+//            $response->end();
+//            return false;
+//        }
+//
+//        // Complete WebSocket handshake
+//        $key = $request->header['sec-websocket-key'] ?? '';
+//        if (!preg_match('#^[+/0-9A-Za-z]{21}[AQgw]==$#', $key)) {
+//            logger()->warning("handshake failed (1)");
+//            $response->end();
+//            return false;
+//        }
+//
+//        if (strlen(base64_decode($key)) !== 16) {
+//            $response->end();
+//            logger()->warning("handshake failed (2)");
+//            return false;
+//        }
+//
+//        $response->header('Upgrade', 'websocket');
+//        $response->header('Connection', 'Upgrade');
+//        $response->header(
+//            'Sec-WebSocket-Accept',
+//            base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))
+//        );
+//        $response->header('Sec-WebSocket-Version', '13');
+//
+//        $protocol = $request->header['sec-websocket-protocol'] ?? null;
+//
+//        if ($protocol !== null) {
+//            $response->header('Sec-WebSocket-Protocol', $protocol);
+//        }
+//
+//        $response->status(101);
+//        $response->end();
+//        logger()->info("handshake done");
+//
+//
+//
+//        return true;
     }
 
     public static function onOpen(Request $request, Response $response): void
@@ -208,44 +351,37 @@ class WsServerCallbacks
 
     public static function onMessage(Server $server, Frame $frame): void
     {
-        // Check for a ping event using the OpCode
-        if($frame->opcode === WEBSOCKET_OPCODE_PING)
-        {
-            logger()->info("Ping frame received: Code {$frame->opcode}");
-            $pongFrame = new Frame;
-            $pongFrame->opcode = WEBSOCKET_OPCODE_PONG;
-            $pongFrame->finish = true;
-            $pongFrame->data = 'pong';
+        static::$middlewareManager->runMessagePipeline(
+            $server,
+            $frame,
+            function (Server $server, Frame $frame) {
+                // Original message handling logic here
+                $sender = static::$fds->get(strval($frame->fd), "name");
+                logger()->info("received from " . $sender . ", message: {$frame->data}");
 
-            // Send back a pong to the client
-            $server->push($frame->fd, $pongFrame);
-            return;
-        }
+                // Process through channel manager if available
+                if (static::$channelManager) {
+                    try {
+                        static::$channelManager->handleClientMessage($frame->fd, $frame);
+                    } catch (\Throwable $e) {
+                        logger()->error("Error handling client message: " . $e->getMessage(), [
+                            'fd' => $frame->fd,
+                            'data' => $frame->data,
+                            'exception' => get_class($e)
+                        ]);
 
-        $sender = static::$fds->get(strval($frame->fd), "name");
-        logger()->info("received from " . $sender . ", message: {$frame->data}");
-
-        // Process through channel manager if available
-        if (static::$channelManager) {
-            try {
-                static::$channelManager->handleClientMessage($frame->fd, $frame);
-            } catch (\Throwable $e) {
-                logger()->error("Error handling client message: " . $e->getMessage(), [
-                    'fd' => $frame->fd,
-                    'data' => $frame->data,
-                    'exception' => get_class($e)
-                ]);
-
-                // Send error back to client
-                $server->push($frame->fd, json_encode([
-                    'event' => 'error',
-                    'data' => [
-                        'message' => $e->getMessage(),
-                        'code' => $e->getCode()
-                    ]
-                ]));
+                        // Send error back to client
+                        $server->push($frame->fd, json_encode([
+                            'event' => 'error',
+                            'data' => [
+                                'message' => $e->getMessage(),
+                                'code' => $e->getCode()
+                            ]
+                        ]));
+                    }
+                }
             }
-        }
+        );
     }
 
     private static function createFdsTable(): void
