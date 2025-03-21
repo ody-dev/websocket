@@ -28,10 +28,32 @@ class AuthenticationMiddleware implements WebSocketMiddlewareInterface
     public function processHandshake(Request $request, Response $response, callable $next): bool
     {
         // Verify authentication token
-        if ($request->header["sec-websocket-protocol"] !== $this->secretKey) {
+//        if ($request->header["sec-websocket-protocol"] !== $this->secretKey) {
+//            logger()->warning("not authenticated");
+//            $response->status(401);
+//            $response->end();
+//            return false;
+//        }
+
+        // Verify authentication token
+        if ($request->header["sec-websocket-protocol"] !== config('websocket.secret_key')) {
             logger()->warning("not authenticated");
             $response->status(401);
             $response->end();
+            return false;
+        }
+
+        // Complete WebSocket handshake
+        $key = $request->header['sec-websocket-key'] ?? '';
+        if (!preg_match('#^[+/0-9A-Za-z]{21}[AQgw]==$#', $key)) {
+            logger()->warning("handshake failed (1)");
+            $response->end();
+            return false;
+        }
+
+        if (strlen(base64_decode($key)) !== 16) {
+            $response->end();
+            logger()->warning("handshake failed (2)");
             return false;
         }
 

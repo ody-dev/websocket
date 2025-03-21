@@ -56,15 +56,52 @@ class MiddlewareManager
         return $this;
     }
 
-    // Rest of the implementation with separate pipeline creation
-    // using the appropriate middleware arrays
+    /**
+     * Execute the middleware pipeline for a handshake
+     *
+     * @param Request $request
+     * @param Response $response
+     * @param callable $finalHandler
+     * @return bool
+     */
+    public function runHandshakePipeline(Request $request, Response $response, callable $finalHandler): bool
+    {
+        // Create the pipeline by nesting each middleware
+        $pipeline = $this->createHandshakePipeline($finalHandler);
 
+        // Execute the pipeline
+        return $pipeline($request, $response);
+    }
+
+    /**
+     * Execute the middleware pipeline for a message
+     *
+     * @param Server $server
+     * @param Frame $frame
+     * @param callable $finalHandler
+     * @return mixed
+     */
+    public function runMessagePipeline(Server $server, Frame $frame, callable $finalHandler)
+    {
+        // Create the pipeline by nesting each middleware
+        $pipeline = $this->createMessagePipeline($finalHandler);
+
+        // Execute the pipeline
+        return $pipeline($server, $frame);
+    }
+
+    /**
+     * Create the handshake middleware pipeline
+     *
+     * @param callable $finalHandler
+     * @return callable
+     */
     protected function createHandshakePipeline(callable $finalHandler): callable
     {
         // Start with the final handler
         $pipeline = $finalHandler;
 
-        // Use handshake-specific middleware
+        // Build the pipeline from the last middleware to the first
         foreach (array_reverse($this->handshakeMiddleware) as $middleware) {
             $next = $pipeline;
             $pipeline = function (Request $request, Response $response) use ($middleware, $next) {
@@ -75,12 +112,18 @@ class MiddlewareManager
         return $pipeline;
     }
 
+    /**
+     * Create the message middleware pipeline
+     *
+     * @param callable $finalHandler
+     * @return callable
+     */
     protected function createMessagePipeline(callable $finalHandler): callable
     {
         // Start with the final handler
         $pipeline = $finalHandler;
 
-        // Use message-specific middleware
+        // Build the pipeline from the last middleware to the first
         foreach (array_reverse($this->messageMiddleware) as $middleware) {
             $next = $pipeline;
             $pipeline = function (Server $server, Frame $frame) use ($middleware, $next) {

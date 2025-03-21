@@ -10,7 +10,6 @@ use Ody\Websocket\Channel\ChannelManager;
 use Ody\Websocket\Middleware\MiddlewareManager;
 use Ody\Websocket\Middleware\WebSocketMiddlewareInterface;
 use Swoole\Coroutine;
-use Swoole\Event;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
 use Swoole\Table;
@@ -250,57 +249,31 @@ class WsServerCallbacks
             $request,
             $response,
             function (Request $request, Response $response) {
-                Event::defer(function () use ($request, $response) {
-                    self::onOpen($request, $response);
-                });
+                $key = $request->header['sec-websocket-key'] ?? '';
+
+                $response->header('Upgrade', 'websocket');
+                $response->header('Connection', 'Upgrade');
+                $response->header(
+                    'Sec-WebSocket-Accept',
+                    base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))
+                );
+                $response->header('Sec-WebSocket-Version', '13');
+
+                $protocol = $request->header['sec-websocket-protocol'] ?? null;
+
+                if ($protocol !== null) {
+                    $response->header('Sec-WebSocket-Protocol', $protocol);
+                }
+
+                $response->status(101);
+                $response->end();
+                logger()->info("handshake done");
+
+                return true;
 
                 return true; // or false if handshake fails
             }
         );
-
-        // Verify authentication token
-//        if ($request->header["sec-websocket-protocol"] !== config('websocket.secret_key')) {
-//            logger()->warning("not authenticated");
-//            $response->status(401);
-//            $response->end();
-//            return false;
-//        }
-//
-//        // Complete WebSocket handshake
-//        $key = $request->header['sec-websocket-key'] ?? '';
-//        if (!preg_match('#^[+/0-9A-Za-z]{21}[AQgw]==$#', $key)) {
-//            logger()->warning("handshake failed (1)");
-//            $response->end();
-//            return false;
-//        }
-//
-//        if (strlen(base64_decode($key)) !== 16) {
-//            $response->end();
-//            logger()->warning("handshake failed (2)");
-//            return false;
-//        }
-//
-//        $response->header('Upgrade', 'websocket');
-//        $response->header('Connection', 'Upgrade');
-//        $response->header(
-//            'Sec-WebSocket-Accept',
-//            base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true))
-//        );
-//        $response->header('Sec-WebSocket-Version', '13');
-//
-//        $protocol = $request->header['sec-websocket-protocol'] ?? null;
-//
-//        if ($protocol !== null) {
-//            $response->header('Sec-WebSocket-Protocol', $protocol);
-//        }
-//
-//        $response->status(101);
-//        $response->end();
-//        logger()->info("handshake done");
-//
-//
-//
-//        return true;
     }
 
     public static function onOpen(Request $request, Response $response): void
