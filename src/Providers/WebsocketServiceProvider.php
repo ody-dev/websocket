@@ -48,6 +48,11 @@ class WebsocketServiceProvider extends ServiceProvider
     {
         $this->loadRoutes(__dir__ . '/../routes.php');
 
+        // Publish configuration
+        $this->publishes([
+            __DIR__ . '/../../config/websocket.php' => 'websocket.php'
+        ], 'ody/websocket');
+
         $this->registerCommands([
             StartCommand::class,
             StopCommand::class,
