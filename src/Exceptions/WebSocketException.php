@@ -9,7 +9,7 @@
 
 namespace Ody\Websocket\Exceptions;
 
-class InvalidUrl extends \InvalidArgumentException
+class WebSocketException extends \Exception
 {
 
 }

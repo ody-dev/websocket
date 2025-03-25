@@ -1,16 +1,19 @@
 <?php
+/*
+ *  This file is part of ODY framework.
+ *
+ *  @link     https://ody.dev
+ *  @document https://ody.dev/docs
+ *  @license  https://github.com/ody-dev/ody-foundation/blob/master/LICENSE
+ */
 
 namespace Ody\Websocket\Commands;
 
-use Ody\Core\Foundation\Console\Style;
-use Ody\Core\Server\Dependencies;
+use Ody\Foundation\Console\Command;
 use Ody\Server\ServerType;
-use Ody\Swoole\HotReload\Watcher;
 use Ody\Websocket\WsServerCallbacks;
 use Ody\Websocket\WsServerState;
-use Swoole\Process;
 use Symfony\Component\Console\Attribute\AsCommand;
-use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -18,14 +21,25 @@ use Symfony\Component\Console\Question\ChoiceQuestion;
 
 #[AsCommand(
     name: 'websocket:start',
-    description: 'start http server'
+    description: 'start websocket server'
 )]
 class StartCommand extends Command
 {
+    /**
+     * The console command name.
+     *
+     * @var string
+     */
+    protected $name = 'websocket:start';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'start a websocket server';
+
     private WsServerState $serverState;
-
-    private Style $io;
-
     protected function configure(): void
     {
         $this->addOption(
@@ -39,21 +53,12 @@ class StartCommand extends Command
     /**
      * @throws \Exception
      */
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    protected function handle(InputInterface $input, OutputInterface $output): int
     {
-        /*
-         * load Ody style
-         */
-        $this->io = new Style($input, $output);
-
         /*
          * Get a server state instance
          */
         $this->serverState = WsServerState::getInstance();
-
-        if (!Dependencies::check($this->io)) {
-            return Command::FAILURE;
-        }
 
         if ($this->serverState->websocketServerIsRunning()) {
             if (!$this->handleRunningServer($input, $output)) {
@@ -61,7 +66,7 @@ class StartCommand extends Command
             }
         }
 
-        $server = \Ody\Server\ServerManager::init(ServerType::WS_SERVER, WsServerState::getInstance())
+        $server = \Ody\Server\ServerManager::init(ServerType::WS_SERVER)
             ->createServer(config('websocket'))
             ->setServerConfig(config('websocket.additional'))
             ->registerCallbacks(config("websocket.callbacks"))
@@ -78,7 +83,7 @@ class StartCommand extends Command
 
     private function handleRunningServer(InputInterface $input, OutputInterface $output): bool
     {
-        $this->io->error('failed to listen server port[' . config('websocket.host') . ':' . config('websocket.port') . '], Error: Address already', true);
+        logger()->error('failed to listen server port[' . config('websocket.host') . ':' . config('websocket.port') . '], Error: Address already');
 
         $helper = $this->getHelper('question');
         $question = new ChoiceQuestion(

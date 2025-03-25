@@ -7,9 +7,13 @@
  *  @license  https://github.com/ody-dev/ody-foundation/blob/master/LICENSE
  */
 
-namespace Ody\Websocket\Exceptions;
+namespace Ody\Websocket\Channel\Exceptions;
 
-class InvalidUrl extends \InvalidArgumentException
+/**
+ * Subscription Exception
+ *
+ * Exception thrown during channel subscription
+ */
+class SubscriptionException extends ChannelException
 {
-
 }

@@ -1,52 +1,1273 @@
-<!doctype html>
-<html>
+<!--
+  ~  This file is part of ODY framework.
+  ~
+  ~  @link     https://ody.dev
+  ~  @document https://ody.dev/docs
+  ~  @license  https://github.com/ody-dev/ody-foundation/blob/master/LICENSE
+  -->
+
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title> WebSocket with PHP and Open Swoole </title>
-    <script>
-        let echo_service;
-        append = function (text) {
-            document.getElementById("websocket_events").insertAdjacentHTML('beforeend',
-                "<li>" + text + ";</li>"
-            );
-        }
-      
-        window.onload = connectWebsocket()
-
-        function connectWebsocket() {
-            socket = new WebSocket('ws://127.0.0.1:9502', '123123123');
-            socket.onmessage = function (event) {
-                append(event.data)
-            }
-            socket.onopen = function () {
-                append("Connected to WebSocket!");
-            }
-            socket.onclose = function () {
-                append("Connection closed");
-
-                setTimeout(connectWebsocket, 20000)
-
-            }
-            socket.onerror = function () {
-                append("Error happened");
-            }
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Ody WebSocket Channel Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
         }
 
-        function sendMessage(event) {
-            console.log(event)
-            let message = document.getElementById("message").value;
-            socket.send(message);
+        h1, h2, h3 {
+            color: #2c3e50;
         }
 
-    </script>
+        .container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background-color: #f5f7f9;
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .content {
+            background-color: #fff;
+            border-radius: 6px;
+            padding: 15px;
+            border: 1px solid #ddd;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        input[type="text"], input[type="password"], select, textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4299e1;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background-color: #3182ce;
+        }
+
+        button.secondary {
+            background-color: #a0aec0;
+        }
+
+        button.secondary:hover {
+            background-color: #718096;
+        }
+
+        button.danger {
+            background-color: #f56565;
+        }
+
+        button.danger:hover {
+            background-color: #e53e3e;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .connected {
+            background-color: #48bb78;
+        }
+
+        .disconnected {
+            background-color: #f56565;
+        }
+
+        .channels {
+            margin-top: 20px;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+
+        .channel-item {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .channel-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .log-container {
+            margin-top: 20px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .log-entry.info {
+            color: #90cdf4;
+        }
+
+        .log-entry.success {
+            color: #9ae6b4;
+        }
+
+        .log-entry.error {
+            color: #feb2b2;
+        }
+
+        .log-entry.event {
+            color: #fbd38d;
+        }
+
+        .tab-container {
+            margin-top: 20px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 15px;
+        }
+
+        .tab-button {
+            padding: 8px 15px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: #4a5568;
+            border-bottom: 2px solid transparent;
+            font-weight: 600;
+        }
+
+        .tab-button.active {
+            color: #4299e1;
+            border-bottom-color: #4299e1;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
 </head>
-
 <body>
-<div>
-    Message: <input value="Hello!" type="text" id="message" /><br><br>
-    <input type="button" value="Submit" onclick="sendMessage(event)" /><br>
-    <ul id="websocket_events">
-    </ul>
-</div>
-</body>
+<h1>Ody WebSocket Channel Test</h1>
 
+<div class="container">
+    <div class="sidebar">
+        <h2>Connection</h2>
+        <div class="form-group">
+            <label for="ws-url">WebSocket URL</label>
+            <input id="ws-url" type="text" value="ws://localhost:9502">
+        </div>
+        <div class="form-group">
+            <label for="ws-key">API Key</label>
+            <input id="ws-key" type="text" value="123123123">
+        </div>
+        <div class="status">
+            <div class="status-indicator disconnected" id="status-indicator"></div>
+            <span id="status-text">Disconnected</span>
+        </div>
+        <div>
+            <button id="connect-btn">Connect</button>
+            <button class="secondary" disabled id="disconnect-btn">Disconnect</button>
+        </div>
+
+        <div class="channels">
+            <h2>Channels</h2>
+            <div class="form-group">
+                <label for="channel-type">Channel Type</label>
+                <select id="channel-type">
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
+                    <option value="presence">Presence</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="channel-name">Channel Name</label>
+                <input id="channel-name" placeholder="Enter channel name" type="text">
+            </div>
+            <div class="form-group" id="auth-data-container" style="display: none;">
+                <label for="auth-token">Auth Token</label>
+                <input id="auth-token" placeholder="Auth token from server" type="text">
+            </div>
+            <div class="form-group" id="presence-data-container" style="display: none;">
+                <label for="user-id">User ID</label>
+                <input id="user-id" placeholder="User ID" type="text">
+                <label for="user-name">User Name</label>
+                <input id="user-name" placeholder="User Name" type="text">
+            </div>
+            <button disabled id="subscribe-btn">Subscribe</button>
+
+            <div class="form-group" id="subscribed-channels" style="margin-top: 20px;">
+                <!-- Channel items will be added here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="tab-container">
+            <div class="tab-buttons">
+                <button class="tab-button active" data-tab="events">Events</button>
+                <button class="tab-button" data-tab="publish">Publish</button>
+                <button class="tab-button" data-tab="log">Log</button>
+            </div>
+
+            <div class="tab-content active" id="events-tab">
+                <h3>Channel Events</h3>
+                <div class="form-group">
+                    <label for="event-channel">Channel</label>
+                    <select id="event-channel">
+                        <option value="">Select a channel...</option>
+                    </select>
+                </div>
+                <div id="channel-events">
+                    <!-- Channel events will be displayed here -->
+                    <p>No events received yet. Subscribe to a channel to see events.</p>
+                </div>
+            </div>
+
+            <div class="tab-content" id="publish-tab">
+                <h3>Publish Message</h3>
+                <div class="form-group">
+                    <label for="publish-channel">Channel</label>
+                    <select id="publish-channel">
+                        <option value="">Select a channel...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="event-name">Event Name</label>
+                    <input id="event-name" placeholder="Event name" type="text">
+                </div>
+                <div class="form-group">
+                    <label for="event-data">Event Data (JSON)</label>
+                    <textarea id="event-data" placeholder='{"key": "value"}' rows="6"></textarea>
+                </div>
+                <button disabled id="publish-btn">Publish</button>
+            </div>
+
+            <div class="tab-content" id="log-tab">
+                <h3>WebSocket Log</h3>
+                <div class="log-container" id="log-container">
+                    <!-- Log entries will be added here -->
+                </div>
+                <div style="margin-top: 10px;">
+                    <button id="clear-log-btn">Clear Log</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Include the Ody WebSocket Client -->
+<script>
+    /**
+     * Ody WebSocket Client
+     * A simple client for the Ody WebSocket server with channel support
+     */
+    class OdyWebSocketClient {
+        /**
+         * Constructor
+         *
+         * @param {string} url WebSocket server URL (ws:// or wss://)
+         * @param {string} apiKey API key for authentication
+         * @param {Object} options Configuration options
+         */
+        constructor(url, apiKey, options = {}) {
+            this.url = url;
+            this.apiKey = apiKey;
+            this.options = Object.assign({
+                reconnectAttempts: 10,
+                reconnectDelay: 3000,
+                debug: false
+            }, options);
+
+            this.socket = null;
+            this.socketId = null;
+            this.connected = false;
+            this.reconnectAttempts = 0;
+            this.reconnecting = false;
+            this.channels = {};
+            this.eventCallbacks = {};
+
+            // Bind methods
+            this.connect = this.connect.bind(this);
+            this.disconnect = this.disconnect.bind(this);
+            this.subscribe = this.subscribe.bind(this);
+            this.unsubscribe = this.unsubscribe.bind(this);
+            this.publish = this.publish.bind(this);
+            this.on = this.on.bind(this);
+            this.off = this.off.bind(this);
+
+            // Connect immediately if auto-connect is true
+            if (this.options.autoConnect !== false) {
+                this.connect();
+            }
+        }
+
+        /**
+         * Connect to the WebSocket server
+         *
+         * @return {Promise} Resolves when connected
+         */
+        connect() {
+            return new Promise((resolve, reject) => {
+                if (this.socket && this.connected) {
+                    resolve(this);
+                    return;
+                }
+
+                try {
+                    this.log('Connecting to WebSocket server...');
+
+                    // Create WebSocket connection
+                    this.socket = new WebSocket(this.url, this.apiKey);
+
+                    // Set up event handlers
+                    this.socket.onopen = () => {
+                        this.log('WebSocket connection opened');
+                        this.connected = true;
+                        this.reconnectAttempts = 0;
+                        this.reconnecting = false;
+
+                        // Reset subscriptions on reconnect
+                        Object.keys(this.channels).forEach(channel => {
+                            if (this.channels[channel].subscribed) {
+                                this.subscribe(channel, this.channels[channel].data);
+                            }
+                        });
+
+                        resolve(this);
+                        this.trigger('connected');
+                    };
+
+                    this.socket.onclose = (event) => {
+                        this.log(`WebSocket connection closed: ${event.code} - ${event.reason}`);
+                        this.connected = false;
+                        this.socketId = null;
+
+                        // Mark all channels as unsubscribed
+                        Object.keys(this.channels).forEach(channel => {
+                            this.channels[channel].subscribed = false;
+                        });
+
+                        this.trigger('disconnected', {code: event.code, reason: event.reason});
+
+                        // Attempt to reconnect
+                        if (!this.reconnecting && this.options.reconnectAttempts > 0) {
+                            this.attemptReconnect();
+                        }
+                    };
+
+                    this.socket.onerror = (error) => {
+                        this.log('WebSocket error:', error);
+                        this.trigger('error', error);
+
+                        if (!this.connected) {
+                            reject(error);
+                        }
+                    };
+
+                    this.socket.onmessage = (event) => {
+                        console.log("RAW MESSAGE RECEIVED:", event.data);
+                        this.handleMessage(event.data);
+                    };
+                } catch (error) {
+                    this.log('Connection error:', error);
+                    reject(error);
+
+                    // Attempt to reconnect on connection error
+                    if (!this.reconnecting && this.options.reconnectAttempts > 0) {
+                        this.attemptReconnect();
+                    }
+                }
+            });
+        }
+
+        /**
+         * Attempt to reconnect to the server
+         *
+         * @private
+         */
+        attemptReconnect() {
+            if (this.reconnectAttempts >= this.options.reconnectAttempts) {
+                this.log('Maximum reconnection attempts reached');
+                this.trigger('reconnect_failed');
+                return;
+            }
+
+            this.reconnecting = true;
+            this.reconnectAttempts++;
+
+            this.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.options.reconnectAttempts})...`);
+            this.trigger('reconnecting', {attempt: this.reconnectAttempts});
+
+            setTimeout(() => {
+                this.connect()
+                    .then(() => {
+                        this.log('Reconnected successfully');
+                        this.trigger('reconnected');
+                    })
+                    .catch(() => {
+                        this.log('Reconnection failed');
+                    });
+            }, this.options.reconnectDelay);
+        }
+
+        /**
+         * Disconnect from the WebSocket server
+         */
+        disconnect() {
+            if (this.socket) {
+                this.log('Disconnecting from WebSocket server...');
+                this.reconnectAttempts = this.options.reconnectAttempts; // Prevent auto-reconnect
+                this.socket.close();
+                this.socket = null;
+                this.connected = false;
+                this.socketId = null;
+            }
+        }
+
+        /**
+         * Subscribe to a channel
+         *
+         * @param {string} channelName Channel name
+         * @param {Object} data Additional subscription data
+         * @return {Object} Channel object
+         */
+        subscribe(channelName, data = {}) {
+            if (!this.connected) {
+                throw new Error('Cannot subscribe to channel: not connected');
+            }
+
+            this.log(`Subscribing to channel: ${channelName}`);
+
+            // Create channel if it doesn't exist
+            if (!this.channels[channelName]) {
+                this.channels[channelName] = {
+                    name: channelName,
+                    subscribed: false,
+                    data: data,
+                    eventCallbacks: {}
+                };
+            }
+
+            // Send subscription request
+            this.socket.send(JSON.stringify({
+                event: 'subscribe',
+                channel: channelName,
+                data: data
+            }));
+
+            return {
+                name: channelName,
+                client: this,
+
+                /**
+                 * Bind an event handler for this channel
+                 *
+                 * @param {string} event Event name
+                 * @param {Function} callback Event handler
+                 * @return {Object} This channel
+                 */
+                on: (event, callback) => {
+                    const eventKey = `${channelName}:${event}`;
+
+                    if (!this.eventCallbacks[eventKey]) {
+                        this.eventCallbacks[eventKey] = [];
+                    }
+
+                    this.eventCallbacks[eventKey].push(callback);
+                    return this;
+                },
+
+                /**
+                 * Unbind an event handler for this channel
+                 *
+                 * @param {string} event Event name
+                 * @param {Function} callback Event handler (optional)
+                 * @return {Object} This channel
+                 */
+                off: (event, callback) => {
+                    const eventKey = `${channelName}:${event}`;
+
+                    if (this.eventCallbacks[eventKey]) {
+                        if (callback) {
+                            this.eventCallbacks[eventKey] = this.eventCallbacks[eventKey].filter(cb => cb !== callback);
+                        } else {
+                            delete this.eventCallbacks[eventKey];
+                        }
+                    }
+
+                    return this;
+                },
+
+                /**
+                 * Publish an event to this channel
+                 *
+                 * @param {string} event Event name
+                 * @param {Object} data Event data
+                 * @return {Object} This channel
+                 */
+                publish: (event, data = {}) => {
+                    this.publish(channelName, event, data);
+                    return this;
+                },
+
+                /**
+                 * Unsubscribe from this channel
+                 *
+                 * @return {void}
+                 */
+                unsubscribe: () => {
+                    this.unsubscribe(channelName);
+                }
+            };
+        }
+
+        /**
+         * Unsubscribe from a channel
+         *
+         * @param {string} channelName Channel name
+         */
+        unsubscribe(channelName) {
+            if (!this.connected) {
+                return;
+            }
+
+            this.log(`Unsubscribing from channel: ${channelName}`);
+
+            // Send unsubscription request
+            this.socket.send(JSON.stringify({
+                event: 'unsubscribe',
+                channel: channelName
+            }));
+
+            // Mark channel as unsubscribed
+            if (this.channels[channelName]) {
+                this.channels[channelName].subscribed = false;
+            }
+        }
+
+        /**
+         * Publish an event to a channel
+         *
+         * @param {string} channelName Channel name
+         * @param {string} event Event name
+         * @param {Object} data Event data
+         */
+        publish(channelName, event, data = {}) {
+            if (!this.connected) {
+                throw new Error('Cannot publish to channel: not connected');
+            }
+
+            // Check if subscribed to the channel
+            if (!this.channels[channelName] || !this.channels[channelName].subscribed) {
+                throw new Error(`Cannot publish to channel ${channelName}: not subscribed`);
+            }
+
+            this.log(`Publishing event ${event} to channel ${channelName}`);
+
+            // Send publish request
+            this.socket.send(JSON.stringify({
+                event: 'message',
+                channel: channelName,
+                name: event,
+                data: data
+            }));
+        }
+
+        /**
+         * Register a global event handler
+         *
+         * @param {string} event Event name
+         * @param {Function} callback Event handler
+         * @return {OdyWebSocketClient} This client
+         */
+        on(event, callback) {
+            if (!this.eventCallbacks[event]) {
+                this.eventCallbacks[event] = [];
+            }
+
+            this.eventCallbacks[event].push(callback);
+            return this;
+        }
+
+        /**
+         * Unregister a global event handler
+         *
+         * @param {string} event Event name
+         * @param {Function} callback Event handler (optional)
+         * @return {OdyWebSocketClient} This client
+         */
+        off(event, callback) {
+            if (this.eventCallbacks[event]) {
+                if (callback) {
+                    this.eventCallbacks[event] = this.eventCallbacks[event].filter(cb => cb !== callback);
+                } else {
+                    delete this.eventCallbacks[event];
+                }
+            }
+
+            return this;
+        }
+
+        /**
+         * Handle an incoming message
+         *
+         * @private
+         * @param {string} data Message data
+         */
+        handleMessage(data) {
+            try {
+                const message = JSON.parse(data);
+
+                this.log('Received message:', message);
+
+                // Handle connection established event
+                if (message.event === 'connection_established') {
+                    this.socketId = message.data.socket_id;
+                    this.trigger('socket_id', this.socketId);
+                    return;
+                }
+
+                // Handle subscription succeeded event
+                if (message.event === 'subscription_succeeded') {
+                    const channelName = message.data.channel;
+
+                    if (this.channels[channelName]) {
+                        this.channels[channelName].subscribed = true;
+                        this.trigger('subscription_succeeded', {channel: channelName});
+                        this.trigger(`${channelName}:subscription_succeeded`, {channel: channelName});
+                    }
+
+                    return;
+                }
+
+                // Handle subscription error event
+                if (message.event === 'subscription_error') {
+                    const channelName = message.data.channel;
+
+                    this.trigger('subscription_error', {
+                        channel: channelName,
+                        message: message.data.message
+                    });
+
+                    this.trigger(`${channelName}:subscription_error`, {
+                        channel: channelName,
+                        message: message.data.message
+                    });
+
+                    return;
+                }
+
+                // Handle unsubscribed event
+                if (message.event === 'unsubscribed') {
+                    const channelName = message.data.channel;
+
+                    if (this.channels[channelName]) {
+                        this.channels[channelName].subscribed = false;
+                        this.trigger('unsubscribed', {channel: channelName});
+                        this.trigger(`${channelName}:unsubscribed`, {channel: channelName});
+                    }
+
+                    return;
+                }
+
+                // Handle error event
+                if (message.event === 'error') {
+                    this.trigger('error', message.data);
+                    return;
+                }
+
+                // Handle channel events
+                if (message.channel) {
+                    const channelName = message.channel;
+                    const event = message.event;
+                    const eventData = message.data;
+
+                    // Trigger channel event
+                    this.trigger(`${channelName}:${event}`, eventData);
+
+                    if (typeof window.registerChannelEvent === 'function') {
+                        window.registerChannelEvent(channelName, event);
+                    }
+                }
+            } catch (error) {
+                this.log('Error handling message:', error);
+                this.log('Message data:', data);
+            }
+        }
+
+        /**
+         * Trigger an event
+         *
+         * @private
+         * @param {string} event Event name
+         * @param {Object} data Event data
+         */
+        trigger(event, data = {}) {
+            if (this.eventCallbacks[event]) {
+                this.eventCallbacks[event].forEach(callback => {
+                    try {
+                        callback(data);
+                    } catch (error) {
+                        this.log(`Error in event handler for ${event}:`, error);
+                    }
+                });
+            }
+        }
+
+        /**
+         * Log a message if debug is enabled
+         *
+         * @private
+         * @param {...any} args Arguments to log
+         */
+        log(...args) {
+            if (this.options.debug) {
+                console.log('[OdyWebSocketClient]', ...args);
+            }
+        }
+
+        /**
+         * Get the socket ID
+         *
+         * @return {string|null} Socket ID
+         */
+        getSocketId() {
+            return this.socketId;
+        }
+
+        /**
+         * Check if connected to the server
+         *
+         * @return {boolean} True if connected
+         */
+        isConnected() {
+            return this.connected;
+        }
+    }
+</script>
+
+<script>
+    // Main Test Page Script
+    document.addEventListener('DOMContentLoaded', function () {
+        // Elements
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const wsUrlInput = document.getElementById('ws-url');
+        const wsKeyInput = document.getElementById('ws-key');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const logContainer = document.getElementById('log-container');
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        const channelTypeSelect = document.getElementById('channel-type');
+        const channelNameInput = document.getElementById('channel-name');
+        const authDataContainer = document.getElementById('auth-data-container');
+        const presenceDataContainer = document.getElementById('presence-data-container');
+        const authTokenInput = document.getElementById('auth-token');
+        const userIdInput = document.getElementById('user-id');
+        const userNameInput = document.getElementById('user-name');
+        const subscribeBtn = document.getElementById('subscribe-btn');
+        const subscribedChannelsContainer = document.getElementById('subscribed-channels');
+        const eventChannelSelect = document.getElementById('event-channel');
+        const publishChannelSelect = document.getElementById('publish-channel');
+        const channelEventsContainer = document.getElementById('channel-events');
+        const eventNameInput = document.getElementById('event-name');
+        const eventDataInput = document.getElementById('event-data');
+        const publishBtn = document.getElementById('publish-btn');
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        // WebSocket client
+        let wsClient = null;
+        let channels = {};
+
+        // Initialize tabs
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+
+                button.classList.add('active');
+                document.getElementById(`${button.dataset.tab}-tab`).classList.add('active');
+            });
+        });
+
+        // Show/hide auth inputs based on channel type
+        channelTypeSelect.addEventListener('change', () => {
+            const channelType = channelTypeSelect.value;
+
+            if (channelType === 'private' || channelType === 'presence') {
+                authDataContainer.style.display = 'block';
+            } else {
+                authDataContainer.style.display = 'none';
+            }
+
+            if (channelType === 'presence') {
+                presenceDataContainer.style.display = 'block';
+            } else {
+                presenceDataContainer.style.display = 'none';
+            }
+        });
+
+        // Connect to WebSocket server
+        connectBtn.addEventListener('click', () => {
+            const url = wsUrlInput.value.trim();
+            const key = wsKeyInput.value.trim();
+
+            if (!url || !key) {
+                addLogEntry('WebSocket URL and API Key are required', 'error');
+                return;
+            }
+
+            addLogEntry(`Connecting to ${url} with key ${key}...`, 'info');
+
+            try {
+                wsClient = new OdyWebSocketClient(url, key, {
+                    debug: true,
+                    autoConnect: false
+                });
+
+                // Set up global event handlers
+                wsClient.on('connected', () => {
+                    updateConnectionStatus(true);
+                    addLogEntry('Connected to WebSocket server', 'success');
+                });
+
+                wsClient.on('disconnected', (data) => {
+                    updateConnectionStatus(false);
+                    addLogEntry(`Disconnected from WebSocket server: ${data.code} - ${data.reason || 'No reason provided'}`, 'error');
+                });
+
+                wsClient.on('error', (error) => {
+                    addLogEntry(`WebSocket error: ${error.message || JSON.stringify(error)}`, 'error');
+                });
+
+                wsClient.on('socket_id', (socketId) => {
+                    addLogEntry(`Socket ID: ${socketId}`, 'info');
+                });
+
+                wsClient.on('subscription_succeeded', (data) => {
+                    addLogEntry(`Subscribed to channel: ${data.channel}`, 'success');
+                    updateChannelSubscription(data.channel, true);
+                });
+
+                wsClient.on('subscription_error', (data) => {
+                    addLogEntry(`Subscription error for channel ${data.channel}: ${data.message}`, 'error');
+                    updateChannelSubscription(data.channel, false);
+                });
+
+                wsClient.on('unsubscribed', (data) => {
+                    addLogEntry(`Unsubscribed from channel: ${data.channel}`, 'info');
+                    updateChannelSubscription(data.channel, false);
+                });
+
+                window.registerChannelEvent = registerChannelEvent;
+
+                // Connect
+                wsClient.connect()
+                    .then(() => {
+                        subscribeBtn.disabled = false;
+                    })
+                    .catch((error) => {
+                        addLogEntry(`Connection failed: ${error.message || 'Unknown error'}`, 'error');
+                    });
+            } catch (error) {
+                addLogEntry(`Error initializing WebSocket client: ${error.message}`, 'error');
+            }
+        });
+
+        // Disconnect from WebSocket server
+        disconnectBtn.addEventListener('click', () => {
+            if (wsClient) {
+                wsClient.disconnect();
+                wsClient = null;
+                channels = {};
+                subscribedChannelsContainer.innerHTML = '';
+                eventChannelSelect.innerHTML = '<option value="">Select a channel...</option>';
+                publishChannelSelect.innerHTML = '<option value="">Select a channel...</option>';
+                channelEventsContainer.innerHTML = '<p>No events received yet. Subscribe to a channel to see events.</p>';
+                subscribeBtn.disabled = true;
+                publishBtn.disabled = true;
+            }
+        });
+
+        // Subscribe to a channel
+        subscribeBtn.addEventListener('click', () => {
+            if (!wsClient || !wsClient.isConnected()) {
+                addLogEntry('Not connected to WebSocket server', 'error');
+                return;
+            }
+
+            const channelType = channelTypeSelect.value;
+            let channelName = channelNameInput.value.trim();
+
+            if (!channelName) {
+                addLogEntry('Channel name is required', 'error');
+                return;
+            }
+
+            // Add prefix based on channel type
+            if (channelType === 'private' && !channelName.startsWith('private-')) {
+                channelName = 'private-' + channelName;
+            } else if (channelType === 'presence' && !channelName.startsWith('presence-')) {
+                channelName = 'presence-' + channelName;
+            }
+
+            // Prepare subscription data
+            let subscriptionData = {};
+
+            if (channelType === 'private' || channelType === 'presence') {
+                const authToken = authTokenInput.value.trim();
+                if (!authToken) {
+                    addLogEntry('Auth token is required for private and presence channels', 'error');
+                    return;
+                }
+                subscriptionData.auth = authToken;
+            }
+
+            if (channelType === 'presence') {
+                const userId = userIdInput.value.trim();
+                const userName = userNameInput.value.trim();
+
+                if (!userId) {
+                    addLogEntry('User ID is required for presence channels', 'error');
+                    return;
+                }
+
+                subscriptionData.channel_data = JSON.stringify({
+                    user_id: userId,
+                    user_info: {
+                        name: userName || 'Anonymous'
+                    }
+                });
+            }
+
+            // Subscribe to the channel
+            try {
+                const channel = wsClient.subscribe(channelName, subscriptionData);
+                channels[channelName] = channel;
+
+                // Register channel event handlers
+                channel.on('subscription_succeeded', (data) => {
+                    addLogEntry(`Channel ${channelName} subscription succeeded`, 'success');
+                });
+
+                // For presence channels, handle member events
+                if (channelType === 'presence') {
+                    channel.on('member_added', (data) => {
+                        addLogEntry(`Member added to ${channelName}: ${JSON.stringify(data)}`, 'event');
+                    });
+
+                    channel.on('member_removed', (data) => {
+                        addLogEntry(`Member removed from ${channelName}: ${JSON.stringify(data)}`, 'event');
+                    });
+                }
+
+                // Add channel to UI
+                addChannelToUI(channelName);
+            } catch (error) {
+                addLogEntry(`Error subscribing to channel: ${error.message}`, 'error');
+            }
+        });
+
+        // Clear log
+        clearLogBtn.addEventListener('click', () => {
+            logContainer.innerHTML = '';
+        });
+
+        // Publish event
+        publishBtn.addEventListener('click', () => {
+            const channelName = publishChannelSelect.value;
+            const eventName = eventNameInput.value.trim();
+            let eventData;
+
+            if (!channelName || !eventName) {
+                addLogEntry('Channel and event name are required', 'error');
+                return;
+            }
+
+            try {
+                // Parse event data JSON
+                eventData = JSON.parse(eventDataInput.value || '{}');
+            } catch (error) {
+                addLogEntry(`Invalid JSON in event data: ${error.message}`, 'error');
+                return;
+            }
+
+            try {
+                if (channelName.startsWith('private-') || channelName.startsWith('presence-')) {
+                    // Add client- prefix for private/presence channels if not already present
+                    const clientEventName = eventName.startsWith('client-') ? eventName : 'client-' + eventName;
+                    channels[channelName].publish(clientEventName, eventData);
+                } else {
+                    channels[channelName].publish(eventName, eventData);
+                }
+
+                addLogEntry(`Published event ${eventName} to ${channelName}`, 'success');
+            } catch (error) {
+                addLogEntry(`Error publishing event: ${error.message}`, 'error');
+            }
+        });
+
+        // Helper functions
+        function updateConnectionStatus(connected) {
+            if (connected) {
+                statusIndicator.classList.remove('disconnected');
+                statusIndicator.classList.add('connected');
+                statusText.textContent = 'Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusIndicator.classList.remove('connected');
+                statusIndicator.classList.add('disconnected');
+                statusText.textContent = 'Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                subscribeBtn.disabled = true;
+                publishBtn.disabled = true;
+            }
+        }
+
+        function addLogEntry(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateChannelSubscription(channelName, subscribed) {
+            // Update channel list UI
+            const channelItem = document.querySelector(`.channel-item[data-channel="${channelName}"]`);
+
+            if (channelItem) {
+                const statusElement = channelItem.querySelector('.channel-status');
+                if (statusElement) {
+                    statusElement.textContent = subscribed ? 'Subscribed' : 'Unsubscribed';
+                }
+            } else if (subscribed) {
+                addChannelToUI(channelName);
+            }
+
+            // Update dropdown lists
+            updateChannelDropdowns();
+
+            // Update publish button status
+            publishBtn.disabled = publishChannelSelect.value === '';
+        }
+
+        function registerChannelEvent(channelName, eventName) {
+            if (!wsClient) return;
+
+            const eventKey = `${channelName}:${eventName}`;
+
+            // Only register if we haven't already for this event
+            if (!wsClient.eventCallbacks[eventKey]) {
+                wsClient.on(eventKey, (data) => {
+                    addChannelEvent(channelName, eventName, data);
+                });
+                console.log(`Registered listener for ${eventKey}`);
+            }
+        }
+
+        function addChannelToUI(channelName) {
+            // Create channel item
+            const channelItem = document.createElement('div');
+            channelItem.className = 'channel-item';
+            channelItem.setAttribute('data-channel', channelName);
+
+            // Determine channel type
+            let channelType = 'public';
+            if (channelName.startsWith('private-')) {
+                channelType = 'private';
+            } else if (channelName.startsWith('presence-')) {
+                channelType = 'presence';
+            }
+
+            channelItem.innerHTML = `
+                    <div><strong>${channelName}</strong> (${channelType})</div>
+                    <div>Status: <span class="channel-status">Subscribing...</span></div>
+                    <div class="channel-actions">
+                        <button class="unsubscribe-btn" data-channel="${channelName}">Unsubscribe</button>
+                    </div>
+                `;
+
+            // Add to container
+            subscribedChannelsContainer.appendChild(channelItem);
+
+            // Add unsubscribe event handler
+            channelItem.querySelector('.unsubscribe-btn').addEventListener('click', () => {
+                if (wsClient && channels[channelName]) {
+                    channels[channelName].unsubscribe();
+                    delete channels[channelName];
+                    subscribedChannelsContainer.removeChild(channelItem);
+                    updateChannelDropdowns();
+                }
+            });
+
+            // Register channel event listener
+            if (channels[channelName]) {
+                channels[channelName].on('*', (event, data) => {
+                    addChannelEvent(channelName, event, data);
+                });
+            }
+
+            // Update dropdown lists
+            updateChannelDropdowns();
+
+            // Register channel event listeners
+            if (wsClient) {
+                // Common event types to listen for
+                const commonEvents = [
+                    'subscription_succeeded',
+                    'message',
+                    'created',
+                    'updated',
+                    'deleted',
+                    'client-message'
+                ];
+
+                // Register listeners for common events
+                commonEvents.forEach(event => {
+                    registerChannelEvent(channelName, event);
+                });
+
+                // Listen for new event types
+                wsClient.on('message', (data) => {
+                    try {
+                        const message = JSON.parse(data);
+                        if (message.channel === channelName && message.event) {
+                            // Register a listener for this event type if we see a new one
+                            registerChannelEvent(channelName, message.event);
+                        }
+                    } catch (e) {
+                        console.error("Error parsing message:", e);
+                    }
+                });
+            }
+        }
+
+        function updateChannelDropdowns() {
+            // Clear existing options
+            eventChannelSelect.innerHTML = '<option value="">Select a channel...</option>';
+            publishChannelSelect.innerHTML = '<option value="">Select a channel...</option>';
+
+            // Add options for each subscribed channel
+            Object.keys(channels).forEach(channelName => {
+                const eventOption = document.createElement('option');
+                eventOption.value = channelName;
+                eventOption.textContent = channelName;
+                eventChannelSelect.appendChild(eventOption);
+
+                const publishOption = document.createElement('option');
+                publishOption.value = channelName;
+                publishOption.textContent = channelName;
+                publishChannelSelect.appendChild(publishOption);
+            });
+
+            // Update publish button status
+            publishBtn.disabled = publishChannelSelect.value === '';
+        }
+
+        function addChannelEvent(channelName, eventName, eventData) {
+            console.log(`Adding event to UI: ${channelName} - ${eventName}`, eventData);
+
+            // Check if we're viewing this channel's events
+            if (eventChannelSelect.value === channelName || eventChannelSelect.value === '') {
+                // Remove placeholder if present
+                const placeholder = channelEventsContainer.querySelector('p');
+                if (placeholder) {
+                    placeholder.remove();
+                }
+
+                // Create event item
+                const eventItem = document.createElement('div');
+                eventItem.className = 'channel-item';
+
+                // Format the data nicely
+                let dataStr;
+                try {
+                    dataStr = JSON.stringify(eventData, null, 2);
+                } catch (e) {
+                    dataStr = String(eventData);
+                }
+
+                eventItem.innerHTML = `
+            <div><strong>Event:</strong> ${eventName}</div>
+            <div><strong>Data:</strong> <pre>${dataStr}</pre></div>
+            <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
+        `;
+
+                // Add to container
+                channelEventsContainer.appendChild(eventItem);
+
+                // Scroll to bottom
+                channelEventsContainer.scrollTop = channelEventsContainer.scrollHeight;
+
+                // Add log entry
+                addLogEntry(`Received event ${eventName} from ${channelName}`, 'event');
+            }
+        }
+
+        // Initialize UI
+        updateConnectionStatus(false);
+
+        // Initialize with default values for testing
+        userIdInput.value = '1';
+        userNameInput.value = 'Test User';
+    });
+</script>
+</body>
 </html>
