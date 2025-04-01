@@ -25,10 +25,6 @@ class WebsocketServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        if ($this->isRunningInConsole()) {
-            return;
-        }
-
         // Register the channel client as a singleton
         $this->container->singleton(ChannelClient::class, function ($container) {
             // Get the channel manager from the WebSocket server
