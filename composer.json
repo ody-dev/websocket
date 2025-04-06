@@ -12,7 +12,7 @@
   "require": {
     "php": ">=8.3",
     "ody/swoole": "^0.1.0",
-    "ody/server": "^0.1.0"
+    "ody/server": "^0.2.0"
   },
   "require-dev": {
     "swoole/ide-helper": "^6.0",
@@ -41,5 +41,6 @@
     "phpcs": "phpcs",
     "phpstan": "phpstan --memory-limit=-1",
     "psalm": "psalm --no-cache"
-  }
+  },
+  "version": "0.1.2"
 }
