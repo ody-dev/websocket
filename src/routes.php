@@ -7,17 +7,18 @@
  *  @license  https://github.com/ody-dev/ody-foundation/blob/master/LICENSE
  */
 
-use Ody\Foundation\Facades\Route;
 use Ody\Websocket\Facades\WebSocket;
 use Ody\Websocket\Http\Controllers\ChannelAuthController;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
+/** @var \Ody\Foundation\Router\Router $router */
+
 // Authentication for private and presence channels
-Route::post('/broadcasting/auth', [ChannelAuthController::class, 'auth']);
+$router->post('/broadcasting/auth', [ChannelAuthController::class, 'auth']);
 
 // On the WebSocket server
-Route::post('/api/broadcast', function (ServerRequestInterface $request, ResponseInterface $response) {
+$router->post('/api/broadcast', function (ServerRequestInterface $request, ResponseInterface $response) {
     $data = $request->getParsedBody();
 
     // Validate request
